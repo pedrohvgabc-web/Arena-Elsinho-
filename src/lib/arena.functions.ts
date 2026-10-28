@@ -1,0 +1,256 @@
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { validateSlot, normalizePhone, slotsFor, arenaNow } from "./arena-rules";
+
+const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
+
+async function sha256(s: string) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function randomCode(len: number, alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789") {
+  const bytes = crypto.getRandomValues(new Uint8Array(len));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+/** Fixed-window rate limit stored in the database (workers are stateless). */
+async function rateLimit(key: string, max: number, windowSec: number) {
+  const db = await admin();
+  const { data } = await db.from("rate_limits").select("*").eq("key", key).maybeSingle();
+  const now = Date.now();
+  if (!data || now - new Date(data.window_start).getTime() > windowSec * 1000) {
+    await db.from("rate_limits").upsert({ key, count: 1, window_start: new Date().toISOString() });
+    return true;
+  }
+  if (data.count >= max) return false;
+  await db.from("rate_limits").update({ count: data.count + 1 }).eq("key", key);
+  return true;
+}
+async function clientKey() {
+  const { getRequestHeader } = await import("@tanstack/react-start/server");
+  return (getRequestHeader("cf-connecting-ip") || getRequestHeader("x-forwarded-for") || "anon").split(",")[0]!.trim();
+}
+async function audit(actor: string, action: string, entity?: string, entity_id?: string, details?: Record<string, unknown>) {
+  const db = await admin();
+  await db.from("audit_logs").insert({ actor, action, entity: entity ?? null, entity_id: entity_id ?? null, details: (details ?? null) as never });
+}
+
+/* ---------------- Público ---------------- */
+
+export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
+  const db = await admin();
+  const { data, error } = await db.from("arena_spaces").select("id,name,sport,capacity,slot_minutes,price_cents,active").order("sort_order");
+  if (error) throw new Error("Não foi possível carregar os espaços.");
+  return data;
+});
+
+/** Retorna somente ocupação (sem dados pessoais). */
+export const getAvailability = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ spaceId: z.string().max(40), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+  .handler(async ({ data }) => {
+    const db = await admin();
+    const { data: rows } = await db
+      .from("bookings")
+      .select("start_time,payment_status")
+      .eq("space_id", data.spaceId)
+      .eq("booking_date", data.date)
+      .in("payment_status", ["pending", "paid"]);
+    const taken = new Map((rows ?? []).map((r) => [r.start_time.slice(0, 5), r.payment_status]));
+    return slotsFor(data.date).map((s) => {
+      const st = taken.get(s.start);
+      const v = validateSlot(data.date, s.start);
+      return { ...s, status: st === "paid" ? "confirmed" : st === "pending" ? "pending" : v.ok ? "available" : "unavailable" } as const;
+    });
+  });
+
+const bookingSchema = z.object({
+  spaceId: z.string().min(1).max(40),
+  date: z.string(),
+  start: z.string(),
+  name: z.string().trim().min(3, "Informe o nome completo.").max(80),
+  phone: z.string().max(30),
+  method: z.enum(["pix", "card_onsite", "cash_onsite"]),
+  idempotencyKey: z.string().uuid(),
+});
+
+export const createBooking = createServerFn({ method: "POST" })
+  .inputValidator(bookingSchema)
+  .handler(async ({ data }) => {
+    const db = await admin();
+    // Idempotência: mesma chave devolve a mesma reserva
+    const { data: existing } = await db.from("bookings").select("booking_code").eq("idempotency_key", data.idempotencyKey).maybeSingle();
+    if (existing) return getPublicBooking(existing.booking_code);
+
+    if (!(await rateLimit(`book:${await clientKey()}`, 10, 600))) return { ok: false as const, error: "Muitas tentativas. Aguarde alguns minutos." };
+
+    const phone = normalizePhone(data.phone);
+    if (!phone) return { ok: false as const, error: "WhatsApp inválido. Use DDD + número." };
+    const name = data.name.replace(/[<>]/g, "");
+    const slot = validateSlot(data.date, data.start);
+    if (!slot.ok) return { ok: false as const, error: slot.reason };
+
+    const { data: space } = await db.from("arena_spaces").select("id,price_cents,active").eq("id", data.spaceId).maybeSingle();
+    if (!space || !space.active) return { ok: false as const, error: "Espaço inexistente ou indisponível." };
+
+    const code = `AE-${randomCode(6)}`;
+    const expires = data.method === "pix" ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
+    const { data: booking, error } = await db
+      .from("bookings")
+      .insert({
+        booking_code: code, idempotency_key: data.idempotencyKey, space_id: space.id,
+        booking_date: data.date, start_time: data.start, end_time: slot.end,
+        customer_name: name, phone, payment_method: data.method, amount_cents: space.price_cents, expires_at: expires,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      if (error.code === "23P01" || error.code === "23505") return { ok: false as const, error: "Esse horário acabou de ser reservado. Escolha outro." };
+      console.error("booking insert failed", error.code);
+      return { ok: false as const, error: "Não foi possível concluir a reserva." };
+    }
+    const { createPixCharge } = await import("./payments.server");
+    const pix = data.method === "pix" ? await createPixCharge({ code, amountCents: space.price_cents }) : null;
+    await db.from("payments").insert({
+      booking_id: booking.id, method: data.method, amount_cents: space.price_cents,
+      provider: pix?.provider ?? "onsite", provider_ref: pix?.ref ?? null,
+      is_simulated: pix?.simulated ?? false, pix_payload: pix?.payload ?? null,
+    });
+    await audit("public", "booking.create", "booking", booking.id);
+    return getPublicBooking(code);
+  });
+
+async function getPublicBooking(code: string) {
+  const db = await admin();
+  const { data } = await db
+    .from("bookings")
+    .select("booking_code,booking_date,start_time,end_time,payment_method,payment_status,amount_cents,expires_at,customer_name,arena_spaces(name),payments(pix_payload,is_simulated)")
+    .eq("booking_code", code)
+    .single();
+  if (!data) return { ok: false as const, error: "Reserva não encontrada." };
+  const pay = (data.payments as Array<{ pix_payload: string | null; is_simulated: boolean }>)[0];
+  return {
+    ok: true as const,
+    booking: {
+      code: data.booking_code, date: data.booking_date, start: data.start_time.slice(0, 5), end: data.end_time.slice(0, 5),
+      method: data.payment_method, status: data.payment_status, amount: data.amount_cents, expiresAt: data.expires_at,
+      firstName: data.customer_name.split(" ")[0], space: (data.arena_spaces as { name: string } | null)?.name ?? "",
+      pixPayload: pay?.pix_payload ?? null, pixSimulated: pay?.is_simulated ?? false,
+    },
+  };
+}
+
+export const submitPrivacyRequest = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ name: z.string().trim().min(3).max(80), phone: z.string().max(30), type: z.enum(["access", "deletion", "correction"]), message: z.string().max(1000).optional() }))
+  .handler(async ({ data }) => {
+    if (!(await rateLimit(`privacy:${await clientKey()}`, 5, 3600))) return { ok: false, error: "Muitas solicitações." };
+    const phone = normalizePhone(data.phone);
+    if (!phone) return { ok: false, error: "WhatsApp inválido." };
+    const db = await admin();
+    await db.from("privacy_requests").insert({ name: data.name, phone, request_type: data.type, message: data.message ?? null });
+    return { ok: true, error: null };
+  });
+
+/* ---------------- Admin ---------------- */
+
+const COOKIE = "ae_admin";
+const SESSION_HOURS = 8;
+
+async function requireAdmin() {
+  const { getCookie } = await import("@tanstack/react-start/server");
+  const token = getCookie(COOKIE);
+  if (!token) throw new Error("UNAUTHORIZED");
+  const db = await admin();
+  const { data } = await db.from("admin_sessions").select("id,expires_at").eq("token_hash", await sha256(token)).maybeSingle();
+  if (!data || new Date(data.expires_at) < new Date()) throw new Error("UNAUTHORIZED");
+  return data.id;
+}
+
+export const adminLogin = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ password: z.string().min(1).max(200) }))
+  .handler(async ({ data }) => {
+    if (!(await rateLimit(`login:${await clientKey()}`, 5, 900))) return { ok: false, error: "Muitas tentativas. Tente novamente em 15 minutos." };
+    const expected = process.env["ADMIN_PASSWORD"];
+    if (!expected) return { ok: false, error: "Acesso indisponível." };
+    const [a, b] = await Promise.all([sha256(data.password), sha256(expected)]);
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    if (diff !== 0) {
+      await audit("anon", "admin.login_failed");
+      return { ok: false, error: "Credenciais inválidas." };
+    }
+    const token = randomCode(48, "abcdefghijklmnopqrstuvwxyz0123456789");
+    const db = await admin();
+    await db.from("admin_sessions").insert({ token_hash: await sha256(token), expires_at: new Date(Date.now() + SESSION_HOURS * 3600e3).toISOString() });
+    const { setCookie } = await import("@tanstack/react-start/server");
+    setCookie(COOKIE, token, { httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: SESSION_HOURS * 3600 });
+    await audit("admin", "admin.login");
+    return { ok: true, error: null };
+  });
+
+export const adminLogout = createServerFn({ method: "POST" }).handler(async () => {
+  const { getCookie, deleteCookie } = await import("@tanstack/react-start/server");
+  const token = getCookie(COOKIE);
+  if (token) {
+    const db = await admin();
+    await db.from("admin_sessions").delete().eq("token_hash", await sha256(token));
+  }
+  deleteCookie(COOKIE, { path: "/", secure: true, sameSite: "none" });
+  return { ok: true };
+});
+
+export const adminCheck = createServerFn({ method: "GET" }).handler(async () => {
+  try { await requireAdmin(); return { authed: true }; } catch { return { authed: false }; }
+});
+
+export const adminDay = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await admin();
+    // Expira Pix pendentes vencidos
+    await db.from("bookings").update({ payment_status: "expired", updated_at: new Date().toISOString() })
+      .eq("payment_status", "pending").eq("payment_method", "pix").lt("expires_at", new Date().toISOString());
+    const [{ data: rows }, { data: spaces }] = await Promise.all([
+      db.from("bookings").select("id,booking_code,booking_date,start_time,end_time,customer_name,phone,payment_method,payment_status,amount_cents,notes,space_id,created_at")
+        .eq("booking_date", data.date).order("start_time"),
+      db.from("arena_spaces").select("id,name").order("sort_order"),
+    ]);
+    return { bookings: rows ?? [], spaces: spaces ?? [], slotsPerSpace: slotsFor(data.date).length };
+  });
+
+export const adminPending = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const db = await admin();
+  const nowIso = new Date().toISOString();
+  await db.from("bookings").update({ payment_status: "expired", updated_at: nowIso })
+    .eq("payment_status", "pending").eq("payment_method", "pix").lt("expires_at", nowIso);
+  const { data: rows } = await db.from("bookings")
+    .select("id,booking_code,booking_date,start_time,customer_name,payment_method,amount_cents,space_id,arena_spaces(name)")
+    .eq("payment_status", "pending").gte("booking_date", arenaNow().date)
+    .order("booking_date").order("start_time").limit(100);
+  return (rows ?? []).map((r) => ({ ...r, space_name: (r.arena_spaces as { name: string } | null)?.name ?? r.space_id }));
+});
+
+export const adminUpdateBooking = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.string().uuid(), action: z.enum(["mark_paid", "cancel", "note"]), note: z.string().max(500).optional() }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await admin();
+    const now = new Date().toISOString();
+    const { data: b } = await db.from("bookings").select("payment_method,payment_status").eq("id", data.id).single();
+    if (!b) return { ok: false, error: "Reserva não encontrada." };
+    if (data.action === "mark_paid") {
+      // Confirmação manual pelo administrador (ex.: conferiu o Pix no banco ou recebeu no local)
+      if (b.payment_status !== "pending") return { ok: false, error: "Reserva não está pendente." };
+
+      await db.from("bookings").update({ payment_status: "paid", updated_at: now }).eq("id", data.id);
+      await db.from("payments").update({ status: "paid", paid_at: now, updated_at: now }).eq("booking_id", data.id);
+    } else if (data.action === "cancel") {
+      await db.from("bookings").update({ payment_status: "cancelled", cancelled_at: now, updated_at: now }).eq("id", data.id);
+      await db.from("payments").update({ status: "cancelled", updated_at: now }).eq("booking_id", data.id);
+    } else {
+      await db.from("bookings").update({ notes: (data.note ?? "").replace(/[<>]/g, ""), updated_at: now }).eq("id", data.id);
+    }
+    await audit("admin", `booking.${data.action}`, "booking", data.id);
+    return { ok: true, error: null };
+  });

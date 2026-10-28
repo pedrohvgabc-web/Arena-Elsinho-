@@ -1,0 +1,13 @@
+# Tasks
+- [x] Ajustar vôlei para R$55/h e verificar o valor na reserva.
+- [x] Refinar a logo enviada em PNG e colocar ao lado do nome.
+- [x] Tornar Admin discreto e conferir no celular.
+- [x] Colocar as fotos reais de society e areia na página inicial e na reserva.
+- [x] Colocar a bancada e a imagem da escolinha nas respectivas seções.
+- [x] Destacar o acesso administrativo no cabeçalho e no rodapé.
+- [x] Conferir fotos e acesso administrativo no celular e computador.
+- [x] Mostrar reservas pendentes no Admin com botão de confirmar/cancelar.
+- [x] QR Code Pix na confirmação, real quando houver chave do provedor.
+- [x] Salvar endereço e telefone da arena no site.
+- [x] Colocar bolinha flutuante do WhatsApp no site.
+- [ ] Ativar Pix real: precisa do token do Mercado Pago (secret) e do cadastro do webhook.
