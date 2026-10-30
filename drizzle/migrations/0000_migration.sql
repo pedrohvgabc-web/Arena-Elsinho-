@@ -1,3 +1,5 @@
+-- The application connects to Neon from the server with DATABASE_URL.
+-- Do not grant direct access to public Supabase roles; no RLS policy is needed here.
 create extension if not exists btree_gist;
 
 create table public.arena_spaces (
@@ -11,15 +13,13 @@ create table public.arena_spaces (
   sort_order int not null default 0,
   created_at timestamptz not null default now()
 );
-grant select on public.arena_spaces to anon, authenticated;
-grant all on public.arena_spaces to service_role;
-alter table public.arena_spaces enable row level security;
-create policy "Public can view spaces" on public.arena_spaces for select to anon, authenticated using (true);
 
-insert into public.arena_spaces (id, name, sport, capacity, price_cents, sort_order) values
- ('society-1','Campo de Futebol Society 1','Futebol society',14,15000,1),
- ('society-2','Campo de Futebol Society 2','Futebol society',14,15000,2),
- ('volei-areia','Quadra de Areia para Voleibol','Vôlei de areia',12,10000,3);
+insert into public.arena_spaces (id, name, sport, capacity, price_cents, sort_order)
+values ('society-1','Campo de Futebol Society 1','Futebol society',14,15000,1);
+insert into public.arena_spaces (id, name, sport, capacity, price_cents, sort_order)
+values ('society-2','Campo de Futebol Society 2','Futebol society',14,15000,2);
+insert into public.arena_spaces (id, name, sport, capacity, price_cents, sort_order)
+values ('volei-areia','Quadra de Areia para Voleibol', 'Vôlei de areia',12,10000,3);
 
 create table public.bookings (
   id uuid primary key default gen_random_uuid(),
@@ -45,8 +45,6 @@ create table public.bookings (
 alter table public.bookings add constraint bookings_no_overlap
   exclude using gist (space_id with =, slot with &&) where (payment_status in ('pending','paid'));
 create index bookings_date_idx on public.bookings (booking_date, space_id);
-grant all on public.bookings to service_role;
-alter table public.bookings enable row level security;
 
 create table public.payments (
   id uuid primary key default gen_random_uuid(),
@@ -63,8 +61,6 @@ create table public.payments (
   updated_at timestamptz not null default now()
 );
 create unique index payments_provider_ref_idx on public.payments(provider, provider_ref) where provider_ref is not null;
-grant all on public.payments to service_role;
-alter table public.payments enable row level security;
 
 create table public.payment_webhook_events (
   id uuid primary key default gen_random_uuid(),
@@ -75,8 +71,6 @@ create table public.payment_webhook_events (
   created_at timestamptz not null default now(),
   unique (provider, event_id)
 );
-grant all on public.payment_webhook_events to service_role;
-alter table public.payment_webhook_events enable row level security;
 
 create table public.admin_sessions (
   id uuid primary key default gen_random_uuid(),
@@ -84,16 +78,12 @@ create table public.admin_sessions (
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
-grant all on public.admin_sessions to service_role;
-alter table public.admin_sessions enable row level security;
 
 create table public.rate_limits (
   key text primary key,
   count int not null default 0,
   window_start timestamptz not null default now()
 );
-grant all on public.rate_limits to service_role;
-alter table public.rate_limits enable row level security;
 
 create table public.audit_logs (
   id uuid primary key default gen_random_uuid(),
@@ -104,8 +94,6 @@ create table public.audit_logs (
   details jsonb,
   created_at timestamptz not null default now()
 );
-grant all on public.audit_logs to service_role;
-alter table public.audit_logs enable row level security;
 
 create table public.waitlist (
   id uuid primary key default gen_random_uuid(),
@@ -115,8 +103,6 @@ create table public.waitlist (
   phone text not null,
   created_at timestamptz not null default now()
 );
-grant all on public.waitlist to service_role;
-alter table public.waitlist enable row level security;
 
 create table public.privacy_requests (
   id uuid primary key default gen_random_uuid(),
@@ -127,5 +113,3 @@ create table public.privacy_requests (
   status text not null default 'open',
   created_at timestamptz not null default now()
 );
-grant all on public.privacy_requests to service_role;
-alter table public.privacy_requests enable row level security;

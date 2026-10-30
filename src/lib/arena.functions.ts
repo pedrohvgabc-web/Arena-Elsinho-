@@ -2,7 +2,31 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { validateSlot, normalizePhone, slotsFor, arenaNow, totalCents, MAX_SLOTS } from "./arena-rules";
 
-const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
+type SpaceRow = { id: string; name: string; sport: string; capacity: number; slot_minutes: number; price_cents: number; active: boolean };
+type AvailabilityRow = { start_time: string; payment_status: string };
+type GroupCodeRow = { group_code: string };
+type SpacePriceRow = { id: string; price_cents: number };
+type OccupiedRow = { start_time: string };
+type InsertedBookingRow = { id: string };
+type PublicBookingRow = {
+  group_code: string; booking_date: string; start_time: string; end_time: string;
+  payment_method: string; payment_status: string; amount_cents: number; expires_at: string | null;
+  customer_name: string; space_name: string | null; pix_payload: string | null; is_simulated: boolean | null;
+};
+type AdminSessionRow = { id: string };
+type BookingAdminRow = {
+  id: string; booking_code: string; group_code: string; booking_date: string; start_time: string; end_time: string;
+  customer_name: string; phone: string; payment_method: string; payment_status: string; amount_cents: number;
+  notes: string | null; space_id: string; created_at: string;
+};
+type AdminSpaceRow = { id: string; name: string };
+type BookingPendingRow = {
+  id: string; booking_code: string; group_code: string; booking_date: string; start_time: string;
+  customer_name: string; payment_method: string; amount_cents: number; space_id: string; space_name: string | null;
+};
+type LockedBookingRow = { payment_method: string; payment_status: string; group_code: string };
+
+const database = async () => (await import("./db.server")).getDb();
 
 async function sha256(s: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -12,54 +36,72 @@ function randomCode(len: number, alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789") 
   const bytes = crypto.getRandomValues(new Uint8Array(len));
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
+function errorCode(error: unknown) {
+  return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
+}
 
-/** Fixed-window rate limit stored in the database (workers are stateless). */
+/** Fixed-window rate limit stored atomically in the database (workers are stateless). */
 async function rateLimit(key: string, max: number, windowSec: number) {
-  const db = await admin();
-  const { data } = await db.from("rate_limits").select("*").eq("key", key).maybeSingle();
-  const now = Date.now();
-  if (!data || now - new Date(data.window_start).getTime() > windowSec * 1000) {
-    await db.from("rate_limits").upsert({ key, count: 1, window_start: new Date().toISOString() });
-    return true;
-  }
-  if (data.count >= max) return false;
-  await db.from("rate_limits").update({ count: data.count + 1 }).eq("key", key);
-  return true;
+  const db = await database();
+  const rows = await db`
+    WITH attempt AS (
+      INSERT INTO public.rate_limits (key, count, window_start)
+      VALUES (${key}, 1, now())
+      ON CONFLICT (key) DO UPDATE SET
+        count = CASE
+          WHEN public.rate_limits.window_start <= now() - make_interval(secs => ${windowSec}) THEN 1
+          ELSE public.rate_limits.count + 1
+        END,
+        window_start = CASE
+          WHEN public.rate_limits.window_start <= now() - make_interval(secs => ${windowSec}) THEN now()
+          ELSE public.rate_limits.window_start
+        END
+      WHERE public.rate_limits.window_start <= now() - make_interval(secs => ${windowSec})
+         OR public.rate_limits.count < ${max}
+      RETURNING 1
+    )
+    SELECT EXISTS (SELECT 1 FROM attempt) AS allowed
+  `;
+  return Boolean(rows[0]?.["allowed"]);
 }
 async function clientKey() {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
   return (getRequestHeader("cf-connecting-ip") || getRequestHeader("x-forwarded-for") || "anon").split(",")[0]!.trim();
 }
-async function audit(actor: string, action: string, entity?: string, entity_id?: string, details?: Record<string, unknown>) {
-  const db = await admin();
-  await db.from("audit_logs").insert({ actor, action, entity: entity ?? null, entity_id: entity_id ?? null, details: (details ?? null) as never });
+async function audit(actor: string, action: string, entity?: string, entityId?: string, details?: Record<string, unknown>) {
+  const db = await database();
+  await db`
+    INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+    VALUES (${actor}, ${action}, ${entity ?? null}, ${entityId ?? null}, ${details ? JSON.stringify(details) : null}::jsonb)
+  `;
 }
 
 /* ---------------- Público ---------------- */
 
 export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
-  const db = await admin();
-  const { data, error } = await db.from("arena_spaces").select("id,name,sport,capacity,slot_minutes,price_cents,active").order("sort_order");
-  if (error) throw new Error("Não foi possível carregar os espaços.");
-  return data;
+  const db = await database();
+  return (await db`
+    SELECT id, name, sport, capacity, slot_minutes, price_cents, active
+    FROM public.arena_spaces ORDER BY sort_order
+  `) as unknown as SpaceRow[];
 });
 
 /** Retorna somente ocupação (sem dados pessoais). */
 export const getAvailability = createServerFn({ method: "GET" })
   .inputValidator(z.object({ spaceId: z.string().max(40), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
   .handler(async ({ data }) => {
-    const db = await admin();
-    const { data: rows } = await db
-      .from("bookings")
-      .select("start_time,payment_status")
-      .eq("space_id", data.spaceId)
-      .eq("booking_date", data.date)
-      .in("payment_status", ["pending", "paid"]);
-    const taken = new Map((rows ?? []).map((r) => [r.start_time.slice(0, 5), r.payment_status]));
+    const db = await database();
+    const rows = (await db`
+      SELECT to_char(start_time, 'HH24:MI') AS start_time, payment_status
+      FROM public.bookings
+      WHERE space_id = ${data.spaceId} AND booking_date = ${data.date}::date
+        AND payment_status IN ('pending', 'paid')
+    `) as unknown as AvailabilityRow[];
+    const taken = new Map(rows.map((r) => [String(r.start_time), String(r.payment_status)]));
     return slotsFor(data.date).map((s) => {
-      const st = taken.get(s.start);
-      const v = validateSlot(data.date, s.start);
-      return { ...s, status: st === "paid" ? "confirmed" : st === "pending" ? "pending" : v.ok ? "available" : "unavailable" } as const;
+      const status = taken.get(s.start);
+      const valid = validateSlot(data.date, s.start);
+      return { ...s, status: status === "paid" ? "confirmed" : status === "pending" ? "pending" : valid.ok ? "available" : "unavailable" } as const;
     });
   });
 
@@ -76,10 +118,10 @@ const bookingSchema = z.object({
 export const createBooking = createServerFn({ method: "POST" })
   .inputValidator(bookingSchema)
   .handler(async ({ data }) => {
-    const db = await admin();
-    // Idempotência: mesma chave devolve a mesma reserva
-    const { data: existing } = await db.from("bookings").select("group_code").eq("idempotency_key", data.idempotencyKey).maybeSingle();
-    if (existing) return getPublicBooking(existing.group_code);
+    const db = await database();
+    // Idempotência: mesma chave devolve a mesma reserva, antes de consumir rate limit.
+    const previous = (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
+    if (previous[0]) return getPublicBooking(String(previous[0].group_code));
 
     if (!(await rateLimit(`book:${await clientKey()}`, 10, 600))) return { ok: false as const, error: "Muitas tentativas. Aguarde alguns minutos." };
 
@@ -90,72 +132,134 @@ export const createBooking = createServerFn({ method: "POST" })
     // Same slot picked twice is a click mistake, not a second reservation.
     const starts = [...new Set(data.starts)].sort();
     const slots: Array<{ start: string; end: string }> = [];
-    for (const s of starts) {
-      const v = validateSlot(data.date, s);
-      if (!v.ok) return { ok: false as const, error: v.reason };
-      slots.push({ start: s, end: v.end });
-    }
-
-    const { data: space } = await db.from("arena_spaces").select("id,price_cents,active").eq("id", data.spaceId).maybeSingle();
-    if (!space || !space.active) return { ok: false as const, error: "Espaço inexistente ou indisponível." };
-
-    // Tell the customer which times are gone before any payment is generated.
-    const { data: taken } = await db
-      .from("bookings").select("start_time")
-      .eq("space_id", space.id).eq("booking_date", data.date).in("start_time", starts).in("payment_status", ["pending", "paid"]);
-    if (taken?.length) {
-      return { ok: false as const, error: `Estes horários já foram reservados: ${taken.map((t) => String(t.start_time).slice(0, 5)).join(", ")}.` };
+    for (const start of starts) {
+      const valid = validateSlot(data.date, start);
+      if (!valid.ok) return { ok: false as const, error: valid.reason };
+      slots.push({ start, end: valid.end });
     }
 
     const code = `AE-${randomCode(6)}`;
     const expires = data.method === "pix" ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
-    const rows = slots.map((s) => ({
-      booking_code: slots.length === 1 ? code : `${code}-${s.start.replace(":", "")}`,
-      group_code: code,
-      idempotency_key: data.idempotencyKey,
-      space_id: space.id, booking_date: data.date, start_time: s.start, end_time: s.end,
-      customer_name: name, phone, payment_method: data.method, amount_cents: space.price_cents, expires_at: expires,
-    }));
-    const { data: inserted, error } = await db.from("bookings").insert(rows).select("id");
-    if (error || !inserted?.length) {
-      if (error?.code === "23P01" || error?.code === "23505") return { ok: false as const, error: "Um dos horários acabou de ser reservado. Escolha outro." };
-      console.error("booking insert failed", error?.code);
+    try {
+      const outcome = await db.begin(async (tx) => {
+        const previousInTransaction = (await tx`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
+        if (previousInTransaction[0]) return { code: String(previousInTransaction[0].group_code), error: null as string | null };
+
+        const spaces = (await tx`
+          SELECT id, price_cents FROM public.arena_spaces
+          WHERE id = ${data.spaceId} AND active = true FOR SHARE
+        `) as unknown as SpacePriceRow[];
+        const space = spaces[0];
+        if (!space) return { code: null, error: "Espaço inexistente ou indisponível." };
+
+        // Give the customer a clear response before creating a payment; the exclusion
+        // constraint remains the final protection against concurrent reservations.
+        const occupied = (await tx`
+          SELECT to_char(start_time, 'HH24:MI') AS start_time
+          FROM public.bookings
+          WHERE space_id = ${space.id} AND booking_date = ${data.date}::date
+            AND payment_status IN ('pending', 'paid')
+        `) as unknown as OccupiedRow[];
+        const taken = occupied.filter((row) => starts.includes(String(row.start_time)));
+        if (taken.length) {
+          const times = taken.map((row) => String(row.start_time)).join(", ");
+          return { code: null, error: `Estes horários já foram reservados: ${times}.` };
+        }
+
+        const inserted: Array<{ id: string }> = [];
+        for (const [index, slot] of slots.entries()) {
+          // The legacy schema has a unique idempotency_key per booking row. Keep the
+          // request key on the first row and deterministic suffixes on the rest.
+          const rowKey = index === 0 ? data.idempotencyKey : `${data.idempotencyKey}:${index}`;
+          const bookingCode = slots.length === 1 ? code : `${code}-${slot.start.replace(":", "")}`;
+          const rows = (await tx`
+            INSERT INTO public.bookings (
+              booking_code, group_code, idempotency_key, space_id, booking_date,
+              start_time, end_time, customer_name, phone, payment_method,
+              amount_cents, expires_at
+            ) VALUES (
+              ${bookingCode}, ${code}, ${rowKey}, ${space.id}, ${data.date}::date,
+              ${slot.start}::time, ${slot.end}::time, ${name}, ${phone}, ${data.method},
+              ${space.price_cents}, ${expires}::timestamptz
+            ) RETURNING id
+          `) as unknown as InsertedBookingRow[];
+          if (rows[0]) inserted.push({ id: String(rows[0].id) });
+        }
+
+        // One charge (and one QR Code) covers the whole reservation. It is created
+        // within this transaction so the payment and all booking rows commit together.
+        const amount = totalCents(Number(space.price_cents), slots.length);
+        const { createPixCharge } = await import("./payments.server");
+        const pix = data.method === "pix" ? await createPixCharge({ code, amountCents: amount }) : null;
+        for (const [index, booking] of inserted.entries()) {
+          // provider_ref is unique in the existing schema; one charge belongs to the
+          // first row, while the remaining rows retain their per-slot payment state.
+          await tx`
+            INSERT INTO public.payments (
+              booking_id, method, amount_cents, provider, provider_ref,
+              is_simulated, pix_payload
+            ) VALUES (
+              ${booking.id}::uuid, ${data.method}, ${space.price_cents},
+              ${pix?.provider ?? "onsite"}, ${index === 0 ? pix?.ref ?? null : null},
+              ${pix?.simulated ?? false}, ${index === 0 ? pix?.payload ?? null : null}
+            )
+          `;
+        }
+        await tx`
+          INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+          VALUES ('public', 'booking.create', 'booking', ${inserted[0]?.id ?? null}, ${JSON.stringify({ code, slots: slots.length })}::jsonb)
+        `;
+        return { code, error: null as string | null };
+      });
+
+      if (outcome.error) return { ok: false as const, error: outcome.error };
+      return getPublicBooking(String(outcome.code));
+    } catch (error) {
+      const codeFromError = errorCode(error);
+      if (codeFromError === "23505") {
+        // A concurrent retry may have committed the same idempotency key.
+        const previousAfterConflict = (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
+        if (previousAfterConflict[0]) return getPublicBooking(String(previousAfterConflict[0].group_code));
+      }
+      if (codeFromError === "23P01" || codeFromError === "23505") {
+        return { ok: false as const, error: "Um dos horários acabou de ser reservado. Escolha outro." };
+      }
+      console.error("booking insert failed", codeFromError);
       return { ok: false as const, error: "Não foi possível concluir a reserva." };
     }
-
-    // One charge (and one QR Code) covers the whole reservation.
-    const amount = totalCents(space.price_cents, slots.length);
-    const { createPixCharge } = await import("./payments.server");
-    const pix = data.method === "pix" ? await createPixCharge({ code, amountCents: amount }) : null;
-    await db.from("payments").insert(inserted.map((r) => ({
-      booking_id: r.id, method: data.method, amount_cents: space.price_cents,
-      provider: pix?.provider ?? "onsite", provider_ref: pix?.ref ?? null,
-      is_simulated: pix?.simulated ?? false, pix_payload: pix?.payload ?? null,
-    })));
-    await audit("public", "booking.create", "booking", inserted[0]!.id, { code, slots: slots.length });
-    return getPublicBooking(code);
   });
 
 async function getPublicBooking(code: string) {
-  const db = await admin();
-  const { data } = await db
-    .from("bookings")
-    .select("group_code,booking_date,start_time,end_time,payment_method,payment_status,amount_cents,expires_at,customer_name,arena_spaces(name),payments(pix_payload,is_simulated)")
-    .eq("group_code", code)
-    .order("start_time");
-  if (!data?.length) return { ok: false as const, error: "Reserva não encontrada." };
-  const first = data[0]!;
-  const last = data[data.length - 1]!;
-  const pay = (first.payments as Array<{ pix_payload: string | null; is_simulated: boolean }> | null)?.[0];
+  const db = await database();
+  const rows = (await db`
+    SELECT
+      b.group_code, b.booking_date::text AS booking_date,
+      to_char(b.start_time, 'HH24:MI') AS start_time,
+      to_char(b.end_time, 'HH24:MI') AS end_time,
+      b.payment_method, b.payment_status, b.amount_cents, b.expires_at::text AS expires_at,
+      b.customer_name, s.name AS space_name, p.pix_payload, p.is_simulated
+    FROM public.bookings b
+    LEFT JOIN public.arena_spaces s ON s.id = b.space_id
+    LEFT JOIN LATERAL (
+      SELECT pix_payload, is_simulated FROM public.payments
+      WHERE booking_id = b.id ORDER BY created_at LIMIT 1
+    ) p ON true
+    WHERE b.group_code = ${code}
+    ORDER BY b.start_time
+  `) as unknown as PublicBookingRow[];
+  if (!rows.length) return { ok: false as const, error: "Reserva não encontrada." };
+  const first = rows[0]!;
+  const last = rows[rows.length - 1]!;
   return {
     ok: true as const,
     booking: {
-      code: first.group_code, date: first.booking_date, start: first.start_time.slice(0, 5), end: last.end_time.slice(0, 5),
-      slots: data.map((r) => ({ start: String(r.start_time).slice(0, 5), end: String(r.end_time).slice(0, 5) })),
-      method: first.payment_method, status: first.payment_status, amount: data.reduce((s, r) => s + r.amount_cents, 0),
-      expiresAt: first.expires_at, firstName: first.customer_name.split(" ")[0],
-      space: (first.arena_spaces as { name: string } | null)?.name ?? "",
-      pixPayload: pay?.pix_payload ?? null, pixSimulated: pay?.is_simulated ?? false,
+      code: String(first.group_code), date: String(first.booking_date), start: String(first.start_time), end: String(last.end_time),
+      slots: rows.map((row) => ({ start: String(row.start_time), end: String(row.end_time) })),
+      method: first.payment_method, status: first.payment_status,
+      amount: rows.reduce((sum, row) => sum + Number(row.amount_cents), 0),
+      expiresAt: first.expires_at, firstName: String(first.customer_name).split(" ")[0],
+      space: String(first.space_name ?? ""), pixPayload: first.pix_payload ?? null,
+      pixSimulated: Boolean(first.is_simulated ?? false),
     },
   };
 }
@@ -166,8 +270,11 @@ export const submitPrivacyRequest = createServerFn({ method: "POST" })
     if (!(await rateLimit(`privacy:${await clientKey()}`, 5, 3600))) return { ok: false, error: "Muitas solicitações." };
     const phone = normalizePhone(data.phone);
     if (!phone) return { ok: false, error: "WhatsApp inválido." };
-    const db = await admin();
-    await db.from("privacy_requests").insert({ name: data.name, phone, request_type: data.type, message: data.message ?? null });
+    const db = await database();
+    await db`
+      INSERT INTO public.privacy_requests (name, phone, request_type, message)
+      VALUES (${data.name}, ${phone}, ${data.type}, ${data.message ?? null})
+    `;
     return { ok: true, error: null };
   });
 
@@ -180,10 +287,14 @@ async function requireAdmin() {
   const { getCookie } = await import("@tanstack/react-start/server");
   const token = getCookie(COOKIE);
   if (!token) throw new Error("UNAUTHORIZED");
-  const db = await admin();
-  const { data } = await db.from("admin_sessions").select("id,expires_at").eq("token_hash", await sha256(token)).maybeSingle();
-  if (!data || new Date(data.expires_at) < new Date()) throw new Error("UNAUTHORIZED");
-  return data.id;
+  const db = await database();
+  const rows = (await db`
+    SELECT id FROM public.admin_sessions
+    WHERE token_hash = ${await sha256(token)} AND expires_at > now()
+    LIMIT 1
+  `) as unknown as AdminSessionRow[];
+  if (!rows[0]) throw new Error("UNAUTHORIZED");
+  return rows[0].id;
 }
 
 export const adminLogin = createServerFn({ method: "POST" })
@@ -192,16 +303,19 @@ export const adminLogin = createServerFn({ method: "POST" })
     if (!(await rateLimit(`login:${await clientKey()}`, 5, 900))) return { ok: false, error: "Muitas tentativas. Tente novamente em 15 minutos." };
     const expected = process.env["ADMIN_PASSWORD"];
     if (!expected) return { ok: false, error: "Acesso indisponível." };
-    const [a, b] = await Promise.all([sha256(data.password), sha256(expected)]);
+    const [actualHash, expectedHash] = await Promise.all([sha256(data.password), sha256(expected)]);
     let diff = 0;
-    for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    for (let i = 0; i < actualHash.length; i++) diff |= actualHash.charCodeAt(i) ^ expectedHash.charCodeAt(i);
     if (diff !== 0) {
       await audit("anon", "admin.login_failed");
       return { ok: false, error: "Credenciais inválidas." };
     }
     const token = randomCode(48, "abcdefghijklmnopqrstuvwxyz0123456789");
-    const db = await admin();
-    await db.from("admin_sessions").insert({ token_hash: await sha256(token), expires_at: new Date(Date.now() + SESSION_HOURS * 3600e3).toISOString() });
+    const db = await database();
+    await db`
+      INSERT INTO public.admin_sessions (token_hash, expires_at)
+      VALUES (${await sha256(token)}, ${new Date(Date.now() + SESSION_HOURS * 3600e3).toISOString()}::timestamptz)
+    `;
     const { setCookie } = await import("@tanstack/react-start/server");
     setCookie(COOKIE, token, { httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: SESSION_HOURS * 3600 });
     await audit("admin", "admin.login");
@@ -212,8 +326,8 @@ export const adminLogout = createServerFn({ method: "POST" }).handler(async () =
   const { getCookie, deleteCookie } = await import("@tanstack/react-start/server");
   const token = getCookie(COOKIE);
   if (token) {
-    const db = await admin();
-    await db.from("admin_sessions").delete().eq("token_hash", await sha256(token));
+    const db = await database();
+    await db`DELETE FROM public.admin_sessions WHERE token_hash = ${await sha256(token)}`;
   }
   deleteCookie(COOKIE, { path: "/", secure: true, sameSite: "none" });
   return { ok: true };
@@ -227,54 +341,102 @@ export const adminDay = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
   .handler(async ({ data }) => {
     await requireAdmin();
-    const db = await admin();
-    // Expira Pix pendentes vencidos
-    await db.from("bookings").update({ payment_status: "expired", updated_at: new Date().toISOString() })
-      .eq("payment_status", "pending").eq("payment_method", "pix").lt("expires_at", new Date().toISOString());
-    const [{ data: rows }, { data: spaces }] = await Promise.all([
-      db.from("bookings").select("id,booking_code,group_code,booking_date,start_time,end_time,customer_name,phone,payment_method,payment_status,amount_cents,notes,space_id,created_at")
-        .eq("booking_date", data.date).order("start_time"),
-      db.from("arena_spaces").select("id,name").order("sort_order"),
+    const db = await database();
+    // Expira Pix pendentes vencidos.
+    await db`
+      UPDATE public.bookings SET payment_status = 'expired', updated_at = now()
+      WHERE payment_status = 'pending' AND payment_method = 'pix' AND expires_at < now()
+    `;
+    const [bookingRows, spaceRows] = await Promise.all([
+      db`
+        SELECT id, booking_code, group_code, booking_date::text AS booking_date,
+          to_char(start_time, 'HH24:MI:SS') AS start_time, to_char(end_time, 'HH24:MI:SS') AS end_time,
+          customer_name, phone, payment_method, payment_status, amount_cents, notes,
+          space_id, created_at::text AS created_at
+        FROM public.bookings WHERE booking_date = ${data.date}::date ORDER BY start_time
+      `,
+      db`SELECT id, name FROM public.arena_spaces ORDER BY sort_order`,
     ]);
-    return { bookings: rows ?? [], spaces: spaces ?? [], slotsPerSpace: slotsFor(data.date).length };
+    const bookings = bookingRows as unknown as BookingAdminRow[];
+    const spaces = spaceRows as unknown as AdminSpaceRow[];
+    return { bookings, spaces, slotsPerSpace: slotsFor(data.date).length };
   });
 
 export const adminPending = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
-  const db = await admin();
-  const nowIso = new Date().toISOString();
-  await db.from("bookings").update({ payment_status: "expired", updated_at: nowIso })
-    .eq("payment_status", "pending").eq("payment_method", "pix").lt("expires_at", nowIso);
-  const { data: rows } = await db.from("bookings")
-    .select("id,booking_code,group_code,booking_date,start_time,customer_name,payment_method,amount_cents,space_id,arena_spaces(name)")
-    .eq("payment_status", "pending").gte("booking_date", arenaNow().date)
-    .order("booking_date").order("start_time").limit(100);
-  return (rows ?? []).map((r) => ({ ...r, space_name: (r.arena_spaces as { name: string } | null)?.name ?? r.space_id }));
+  const db = await database();
+  await db`
+    UPDATE public.bookings SET payment_status = 'expired', updated_at = now()
+    WHERE payment_status = 'pending' AND payment_method = 'pix' AND expires_at < now()
+  `;
+  const rows = (await db`
+    SELECT b.id, b.booking_code, b.group_code, b.booking_date::text AS booking_date,
+      to_char(b.start_time, 'HH24:MI:SS') AS start_time, b.customer_name,
+      b.payment_method, b.amount_cents, b.space_id, s.name AS space_name
+    FROM public.bookings b LEFT JOIN public.arena_spaces s ON s.id = b.space_id
+    WHERE b.payment_status = 'pending' AND b.booking_date >= ${arenaNow().date}::date
+    ORDER BY b.booking_date, b.start_time LIMIT 100
+  `) as unknown as BookingPendingRow[];
+  return rows.map((row) => ({
+    ...row,
+    arena_spaces: row.space_name ? { name: row.space_name } : null,
+    space_name: row.space_name ?? row.space_id,
+  }));
 });
 
 export const adminUpdateBooking = createServerFn({ method: "POST" })
   .inputValidator(z.object({ id: z.string().uuid(), action: z.enum(["mark_paid", "cancel", "note"]), note: z.string().max(500).optional() }))
   .handler(async ({ data }) => {
     await requireAdmin();
-    const db = await admin();
+    const db = await database();
     const now = new Date().toISOString();
-    const { data: b } = await db.from("bookings").select("payment_method,payment_status,group_code").eq("id", data.id).single();
-    if (!b) return { ok: false, error: "Reserva não encontrada." };
-    if (data.action === "mark_paid") {
-      // Confirmação manual pelo administrador (ex.: conferiu o Pix no banco ou recebeu no local)
-      if (b.payment_status !== "pending") return { ok: false, error: "Reserva não está pendente." };
-      // Um só Pix cobre todos os horários da mesma reserva.
-      const { data: group } = await db.from("bookings").select("id").eq("group_code", b.group_code).eq("payment_status", "pending");
-      const ids = (group ?? []).map((g) => g.id);
-      const target = ids.length ? ids : [data.id];
-      await db.from("bookings").update({ payment_status: "paid", updated_at: now }).in("id", target);
-      await db.from("payments").update({ status: "paid", paid_at: now, updated_at: now }).in("booking_id", target);
-    } else if (data.action === "cancel") {
-      await db.from("bookings").update({ payment_status: "cancelled", cancelled_at: now, updated_at: now }).eq("id", data.id);
-      await db.from("payments").update({ status: "cancelled", updated_at: now }).eq("booking_id", data.id);
-    } else {
-      await db.from("bookings").update({ notes: (data.note ?? "").replace(/[<>]/g, ""), updated_at: now }).eq("id", data.id);
-    }
-    await audit("admin", `booking.${data.action}`, "booking", data.id);
-    return { ok: true, error: null };
+    const result = await db.begin(async (tx) => {
+      const bookings = (await tx`
+        SELECT payment_method, payment_status, group_code
+        FROM public.bookings WHERE id = ${data.id}::uuid FOR UPDATE
+      `) as unknown as LockedBookingRow[];
+      const booking = bookings[0];
+      if (!booking) return { ok: false, error: "Reserva não encontrada." };
+
+      if (data.action === "mark_paid") {
+        // Confirmação manual pelo administrador; um Pix pode cobrir todo o grupo.
+        if (booking.payment_status !== "pending") return { ok: false, error: "Reserva não está pendente." };
+        await tx`
+          SELECT id FROM public.bookings
+          WHERE group_code = ${booking.group_code} AND payment_status = 'pending'
+          ORDER BY id FOR UPDATE
+        `;
+        await tx`
+          UPDATE public.bookings SET payment_status = 'paid', updated_at = ${now}::timestamptz
+          WHERE group_code = ${booking.group_code} AND payment_status = 'pending'
+        `;
+        await tx`
+          UPDATE public.payments SET status = 'paid', paid_at = ${now}::timestamptz, updated_at = ${now}::timestamptz
+          WHERE booking_id IN (
+            SELECT id FROM public.bookings WHERE group_code = ${booking.group_code} AND payment_status = 'paid'
+          )
+        `;
+      } else if (data.action === "cancel") {
+        await tx`
+          UPDATE public.bookings
+          SET payment_status = 'cancelled', cancelled_at = ${now}::timestamptz, updated_at = ${now}::timestamptz
+          WHERE id = ${data.id}::uuid
+        `;
+        await tx`
+          UPDATE public.payments SET status = 'cancelled', updated_at = ${now}::timestamptz
+          WHERE booking_id = ${data.id}::uuid
+        `;
+      } else {
+        await tx`
+          UPDATE public.bookings SET notes = ${((data.note ?? "").replace(/[<>]/g, ""))}, updated_at = ${now}::timestamptz
+          WHERE id = ${data.id}::uuid
+        `;
+      }
+      await tx`
+        INSERT INTO public.audit_logs (actor, action, entity, entity_id)
+        VALUES ('admin', ${`booking.${data.action}`}, 'booking', ${data.id})
+      `;
+      return { ok: true, error: null };
+    });
+    return result;
   });
