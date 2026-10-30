@@ -3,7 +3,6 @@ import { Users, Timer, Lightbulb, ShowerHead, Coffee, Heart, Play, Trophy, Targe
 import hero from "@/assets/hero.webp";
 import heroVideo from "@/assets/hero-video.mp4.asset.json";
 import escolinha from "@/assets/escolinha.webp.asset.json";
-import bancada from "@/assets/bancada.webp.asset.json";
 import { getSpaces } from "@/lib/arena.functions";
 import { SPACE_IMAGES } from "@/lib/space-images";
 import { arenaNow, openingWindows, weekdayOf, formatBRL } from "@/lib/arena-rules";
@@ -192,10 +191,20 @@ function Index() {
             </ul>
           </Reveal>
           <Reveal delay={150}>
-            <Tilt max={6} className="rounded-2xl">
-              <img src={bancada.url} alt="Bancada e área de convivência da Arena Elsinho" loading="lazy" decoding="async" width={1024} height={768} className="aspect-[4/3] w-full rounded-2xl object-cover" />
+            <Tilt max={6} className="mx-auto w-full max-w-[22rem] rounded-2xl">
+              <video
+                controls
+                playsInline
+                preload="none"
+                poster="/media/arena-reel-poster.webp"
+                aria-label="Vídeo da Arena Elsinho"
+                className="aspect-[9/16] w-full rounded-2xl bg-background object-cover"
+              >
+                <source src="/media/arena-reel.mp4" type="video/mp4" />
+                Seu navegador não oferece suporte à reprodução de vídeo.
+              </video>
             </Tilt>
-            <a href={SITE.reel} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary"><Play className="h-4 w-4" />Assistir vídeo no Instagram <ArrowRight className="h-4 w-4" /></a>
+            <a href={SITE.reel} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary"><Play className="h-4 w-4" />Curta, comente e compartilhe! <ArrowRight className="h-4 w-4" /></a>
           </Reveal>
         </div>
       </section>
