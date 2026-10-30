@@ -1,0 +1,22 @@
+# Frontend SPA no CDN gratuito do Render; o Web Service arena-elsinho continua
+# sendo o backend Node e não é renomeado nem removido.
+services:
+  - type: web
+    runtime: static
+    name: arena-elsinho-static
+    branch: main
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build:static
+    staticPublishPath: dist/client
+    routes:
+      # Encaminhar funções TanStack ao backend existente antes do fallback SPA.
+      - type: rewrite
+        source: /_serverFn/*
+        destination: https://arena-elsinho.onrender.com/_serverFn/*
+      # Manter rotas de servidor públicas, incluindo o webhook de pagamentos.
+      - type: rewrite
+        source: /api/*
+        destination: https://arena-elsinho.onrender.com/api/*
+      # Qualquer rota de frontend usa o shell estático servido pelo CDN.
+      - type: rewrite
+        source: /*
+        destination: /index.html
