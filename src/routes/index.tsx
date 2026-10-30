@@ -95,6 +95,7 @@ function Index() {
   const spaces = Route.useLoaderData();
   const heroRef = useHeroFx();
   const [heroVideoReady, setHeroVideoReady] = useState(false);
+  const [heroVideoVisible, setHeroVideoVisible] = useState(false);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
@@ -118,7 +119,8 @@ function Index() {
             src={heroVideo.url}
             poster={hero}
             autoPlay muted loop playsInline preload="none" aria-hidden="true"
-            className="absolute inset-0 -z-20 h-full w-full object-cover motion-reduce:hidden"
+            onPlaying={() => setHeroVideoVisible(true)}
+            className={`absolute inset-0 -z-20 h-full w-full object-cover transition-opacity duration-1000 ease-in-out ${heroVideoVisible ? "opacity-100" : "opacity-0"} motion-reduce:hidden`}
           />
         )}
         <div className="absolute inset-0 -z-10 bg-hero-fade" />
