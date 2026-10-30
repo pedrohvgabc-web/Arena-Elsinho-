@@ -78,12 +78,26 @@ async function audit(actor: string, action: string, entity?: string, entityId?: 
 
 /* ---------------- Público ---------------- */
 
+const SPACE_CACHE_TTL_MS = 30_000;
+let spacesCache: { rows: SpaceRow[]; expiresAt: number } | undefined;
+let spacesPending: Promise<SpaceRow[]> | undefined;
+
 export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
-  const db = await database();
-  return (await db`
-    SELECT id, name, sport, capacity, slot_minutes, price_cents, active
-    FROM public.arena_spaces ORDER BY sort_order
-  `) as unknown as SpaceRow[];
+  if (spacesCache && spacesCache.expiresAt > Date.now()) return spacesCache.rows;
+  const pending = spacesPending ?? (spacesPending = (async () => {
+    const db = await database();
+    const rows = (await db`
+      SELECT id, name, sport, capacity, slot_minutes, price_cents, active
+      FROM public.arena_spaces ORDER BY sort_order
+    `) as unknown as SpaceRow[];
+    spacesCache = { rows, expiresAt: Date.now() + SPACE_CACHE_TTL_MS };
+    return rows;
+  })());
+  try {
+    return await pending;
+  } finally {
+    if (spacesPending === pending) spacesPending = undefined;
+  }
 });
 
 /** Retorna somente ocupação (sem dados pessoais). */

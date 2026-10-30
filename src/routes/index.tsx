@@ -94,6 +94,14 @@ function Ticker() {
 function Index() {
   const spaces = Route.useLoaderData();
   const heroRef = useHeroFx();
+  const [heroVideoReady, setHeroVideoReady] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (connection?.saveData || connection?.effectiveType === "2g" || connection?.effectiveType === "slow-2g") return;
+    const timer = window.setTimeout(() => setHeroVideoReady(true), 1800);
+    return () => window.clearTimeout(timer);
+  }, []);
   return (
     <>
       <section ref={heroRef} className="relative isolate min-h-[88vh] overflow-hidden">
@@ -105,12 +113,14 @@ function Index() {
           fetchPriority="high" decoding="async" className="hero-img absolute inset-0 -z-20 h-full w-full object-cover"
           style={{ translate: "0 var(--py, 0px)" }}
         />
-        <video
-          src={heroVideo.url}
-          poster={hero}
-          autoPlay muted loop playsInline preload="metadata" aria-hidden="true"
-          className="absolute inset-0 -z-20 h-full w-full object-cover motion-reduce:hidden"
-        />
+        {heroVideoReady && (
+          <video
+            src={heroVideo.url}
+            poster={hero}
+            autoPlay muted loop playsInline preload="none" aria-hidden="true"
+            className="absolute inset-0 -z-20 h-full w-full object-cover motion-reduce:hidden"
+          />
+        )}
         <div className="absolute inset-0 -z-10 bg-hero-fade" />
         <div className="spotlight pointer-events-none absolute inset-0 -z-10" aria-hidden />
         <div className="mx-auto flex min-h-[88vh] max-w-7xl flex-col justify-end px-4 pb-20 sm:px-6">
