@@ -7,6 +7,7 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
+    serverFns: { base: "/api/serverFn" },
     spa: {
       enabled: true,
       prerender: {

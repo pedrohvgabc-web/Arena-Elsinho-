@@ -8,11 +8,7 @@ services:
     buildCommand: pnpm install --frozen-lockfile && pnpm run build:static
     staticPublishPath: dist/client
     routes:
-      # Encaminhar funções TanStack ao backend existente antes do fallback SPA.
-      - type: rewrite
-        source: /_serverFn/*
-        destination: https://arena-elsinho.onrender.com/_serverFn/*
-      # Manter rotas de servidor públicas, incluindo o webhook de pagamentos.
+      # Manter funções TanStack e rotas de servidor no backend, incluindo webhooks.
       - type: rewrite
         source: /api/*
         destination: https://arena-elsinho.onrender.com/api/*
