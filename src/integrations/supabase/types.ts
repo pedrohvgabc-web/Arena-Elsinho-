@@ -111,6 +111,7 @@ export type Database = {
           customer_name: string
           end_time: string
           expires_at: string | null
+          group_code: string
           id: string
           idempotency_key: string
           notes: string | null
@@ -131,6 +132,7 @@ export type Database = {
           customer_name: string
           end_time: string
           expires_at?: string | null
+          group_code: string
           id?: string
           idempotency_key: string
           notes?: string | null
@@ -151,6 +153,7 @@ export type Database = {
           customer_name?: string
           end_time?: string
           expires_at?: string | null
+          group_code?: string
           id?: string
           idempotency_key?: string
           notes?: string | null

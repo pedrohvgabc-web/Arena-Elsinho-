@@ -3,12 +3,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
-import { Check, Users, Loader2, Copy, MessageCircle, CalendarPlus, AlertTriangle } from "lucide-react";
+import { Check, Users, Loader2, Copy, MessageCircle, CalendarPlus, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 import { Calendar } from "@/components/ui/calendar";
 import { getSpaces, getAvailability, createBooking } from "@/lib/arena.functions";
 import { SPACE_IMAGES } from "@/lib/space-images";
-import { arenaNow, formatBRL, PAYMENT_LABEL, type PaymentMethod } from "@/lib/arena-rules";
+import { arenaNow, formatBRL, groupRanges, formatRanges, totalCents, MAX_SLOTS, PAYMENT_LABEL, type PaymentMethod } from "@/lib/arena-rules";
 import { waLink } from "@/lib/site";
 import { Magnetic } from "@/components/motion";
 
@@ -47,7 +47,13 @@ function Reservar() {
   const [step, setStep] = useState(espaco ? 2 : 1);
   const [spaceId, setSpaceId] = useState(espaco && spaces.some((s) => s.id === espaco) ? espaco : "");
   const [date, setDate] = useState<Date | undefined>();
-  const [start, setStart] = useState("");
+  const [starts, setStarts] = useState<string[]>([]);
+  const toggleStart = (t: string) => setStarts((cur) =>
+    cur.includes(t) ? cur.filter((x) => x !== t) : cur.length >= MAX_SLOTS ? (toast.error(`Dá para reservar até ${MAX_SLOTS} horários.`), cur) : [...cur, t].sort());
+  const removeRange = (a: string, b: string) => {
+    const m = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    setStarts((cur) => cur.filter((s) => m(s) < m(a) || m(s) >= m(b)));
+  };
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("pix");
@@ -73,7 +79,7 @@ function Reservar() {
     if (phone.replace(/\D/g, "").length < 10) return setError("Informe um WhatsApp com DDD.");
     setSubmitting(true);
     try {
-      const r = await submit({ data: { spaceId, date: dateISO, start, name, phone, method, idempotencyKey: idem } });
+      const r = await submit({ data: { spaceId, date: dateISO, starts, name, phone, method, idempotencyKey: idem } });
       if (r.ok) setDone(r.booking);
       else { setError(r.error); avail.refetch(); }
     } catch { setError("Falha de conexão. Tente novamente."); }
@@ -101,7 +107,7 @@ function Reservar() {
             {spaces.map((s) => {
               const sel = s.id === spaceId;
               return (
-                <button key={s.id} role="radio" aria-checked={sel} disabled={!s.active} onClick={() => { setSpaceId(s.id); setStart(""); }}
+                <button key={s.id} role="radio" aria-checked={sel} disabled={!s.active} onClick={() => { setSpaceId(s.id); setStarts([]); }}
                   className={`relative overflow-hidden rounded-2xl border-2 text-left transition-colors disabled:opacity-50 ${sel ? "border-primary" : "border-border hover:border-primary/50"}`}>
                   <img src={SPACE_IMAGES[s.id]} alt={s.name} loading="lazy" decoding="async" width={1366} height={768} className="aspect-video w-full object-cover" />
                   {sel && <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-primary text-primary-foreground"><Check className="h-5 w-5" /></span>}
@@ -125,7 +131,7 @@ function Reservar() {
           <h2 id="s2" className="text-3xl font-bold uppercase">Data e horário <span className="text-lg text-muted-foreground normal-case">— {space?.name}</span></h2>
           <div className="mt-6 grid gap-8 lg:grid-cols-[auto_1fr]">
             <div className="rounded-2xl border border-border bg-card p-3">
-              <Calendar mode="single" selected={date} onSelect={(d) => { setDate(d); setStart(""); }}
+              <Calendar mode="single" selected={date} onSelect={(d) => { setDate(d); setStarts([]); }}
                 disabled={[{ before: today }, { dayOfWeek: [0] }]} />
             </div>
             <div>
@@ -135,20 +141,33 @@ function Reservar() {
               {avail.data && !avail.isFetching && (
                 <>
                   <p className="mb-4 capitalize text-muted-foreground">{fmtDate(dateISO)}</p>
-                  <div role="radiogroup" aria-label="Horários" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  <p className="mb-3 text-sm text-muted-foreground">Escolha um ou mais horários — o total aparece no resumo.</p>
+                  <div role="group" aria-label="Horários" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                     {avail.data.map((s) => {
-                      const sel = s.start === start;
+                      const sel = starts.includes(s.start);
                       const ok = s.status === "available";
                       return (
-                        <button key={s.start} role="radio" aria-checked={sel} disabled={!ok} onClick={() => setStart(s.start)}
-                          aria-label={`${s.start} às ${s.end}, ${STATUS_TEXT[s.status]}`}
+                        <button key={s.start} aria-pressed={sel} disabled={!ok} onClick={() => toggleStart(s.start)}
+                          aria-label={`${s.start} às ${s.end}, ${sel ? "selecionado" : STATUS_TEXT[s.status]}`}
                           className={`min-h-14 rounded-xl border-2 px-2 py-2 text-center transition-colors ${ok && !sel ? "btn-jelly" : ""} ${sel ? "border-primary bg-primary text-primary-foreground" : STATUS_STYLE[s.status]}`}>
                           <span className="block font-semibold">{s.start}</span>
-                          <span className="block text-[11px] opacity-80">{sel ? "Selecionado" : STATUS_TEXT[s.status]}</span>
+                          <span className="block text-[11px] opacity-80">{sel ? "Na reserva" : STATUS_TEXT[s.status]}</span>
                         </button>
                       );
                     })}
                   </div>
+                  {starts.length > 0 && (
+                    <div className="animate-pop mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 p-3">
+                      <span className="text-sm font-semibold text-primary">{starts.length === 1 ? "1 horário" : `${starts.length} horários`}:</span>
+                      {groupRanges(starts).map(([a, b]) => (
+                        <span key={a} className="inline-flex items-center gap-1 rounded-full bg-card px-3 py-1 text-sm">
+                          {a === b ? a : `${a}–${b}`}
+                          <button aria-label={`Remover ${a === b ? a : `${a} a ${b}`}`} onClick={() => removeRange(a, b)} className="grid h-5 w-5 place-items-center rounded-full hover:bg-destructive/20"><X className="h-3 w-3" /></button>
+                        </span>
+                      ))}
+                      <button onClick={() => setStarts([])} className="ml-auto text-xs text-muted-foreground underline">Limpar</button>
+                    </div>
+                  )}
                   {avail.data.length === 0 && <p className="text-muted-foreground">Sem horários nesta data.</p>}
                 </>
               )}
@@ -156,7 +175,7 @@ function Reservar() {
           </div>
           <div className="mt-8 flex justify-between">
             <button onClick={() => setStep(1)} className="min-h-12 rounded-full border border-border px-6">Voltar</button>
-            <button disabled={!start} onClick={() => setStep(3)} className="min-h-12 rounded-full bg-primary px-8 font-bold text-primary-foreground disabled:opacity-40">Continuar</button>
+            <button disabled={starts.length === 0} onClick={() => setStep(3)} className="min-h-12 rounded-full bg-primary px-8 font-bold text-primary-foreground disabled:opacity-40">Continuar</button>
           </div>
         </section>
       )}
@@ -194,10 +213,10 @@ function Reservar() {
           <aside className="h-fit rounded-2xl border border-border bg-card p-6" aria-label="Resumo">
             <h3 className="text-2xl font-bold uppercase">Resumo</h3>
             <dl className="mt-4 space-y-2 text-sm">
-              {[["Espaço", space.name], ["Data", fmtDate(dateISO)], ["Horário", start], ["Cliente", name || "—"], ["Telefone", phone || "—"], ["Pagamento", PAYMENT_LABEL[method]]].map(([k, v]) => (
+              {[["Espaço", space.name], ["Data", fmtDate(dateISO)], ["Horários", starts.length ? formatRanges(starts) : "—"], ["Cliente", name || "—"], ["Telefone", phone || "—"], ["Pagamento", PAYMENT_LABEL[method]]].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="text-muted-foreground">{k}</dt><dd className="text-right capitalize">{v}</dd></div>
               ))}
-              <div className="flex justify-between border-t border-border pt-3 text-base font-bold"><dt>Valor</dt><dd>{formatBRL(space.price_cents)}</dd></div>
+              <div className="flex justify-between border-t border-border pt-3 text-base font-bold"><dt>Valor total</dt><dd>{formatBRL(totalCents(space.price_cents, starts.length))}</dd></div>
             </dl>
             <p className="mt-4 text-xs text-muted-foreground">Ao confirmar, você aceita a <Link to="/cancelamento" className="underline">política de cancelamento</Link> e a <Link to="/privacidade" className="underline">política de privacidade</Link>.</p>
             <Magnetic strength={0.15} className="mt-6 block w-full">
@@ -213,10 +232,12 @@ function Reservar() {
 }
 
 function Confirmation({ b }: { b: Done }) {
-  const msg = `Olá! Minha reserva na Arena Elsinho: ${b.code} — ${b.space}, ${fmtDate(b.date)} às ${b.start}. Pagamento: ${PAYMENT_LABEL[b.method as PaymentMethod]}.`;
+  const times = formatRanges(b.slots.map((s) => s.start));
+  const msg = `Olá! Minha reserva na Arena Elsinho: ${b.code} — ${b.space}, ${fmtDate(b.date)}, ${times}. Pagamento: ${PAYMENT_LABEL[b.method as PaymentMethod]}.`;
   const ics = () => {
     const d = b.date.replace(/-/g, "");
-    const body = ["BEGIN:VCALENDAR", "VERSION:2.0", "BEGIN:VEVENT", `UID:${b.code}@arenaelsinho`, `DTSTART:${d}T${b.start.replace(":", "")}00`, `DTEND:${d}T${b.end.replace(":", "")}00`, `SUMMARY:Arena Elsinho — ${b.space}`, `DESCRIPTION:Reserva ${b.code}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    const events = b.slots.map((s, i) => ["BEGIN:VEVENT", `UID:${b.code}-${i}@arenaelsinho`, `DTSTART:${d}T${s.start.replace(":", "")}00`, `DTEND:${d}T${s.end.replace(":", "")}00`, `SUMMARY:Arena Elsinho — ${b.space}`, `DESCRIPTION:Reserva ${b.code}`, "END:VEVENT"]);
+    const body = ["BEGIN:VCALENDAR", "VERSION:2.0", ...events.flat(), "END:VCALENDAR"].join("\r\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([body], { type: "text/calendar" }));
     a.download = `reserva-${b.code}.ics`;
@@ -230,7 +251,7 @@ function Confirmation({ b }: { b: Done }) {
       <p className="mt-4 font-display text-4xl font-bold tracking-widest text-primary">{b.code}</p>
       <div className="mt-8 rounded-2xl border border-border bg-card p-6 text-left">
         <p><strong>{b.space}</strong></p>
-        <p className="capitalize text-muted-foreground">{fmtDate(b.date)} · {b.start}–{b.end}</p>
+        <p className="capitalize text-muted-foreground">{fmtDate(b.date)} · {times}</p>
         <p className="mt-2">Valor: <strong>{formatBRL(b.amount)}</strong> · Status: <span className="text-warning">pagamento pendente</span></p>
         {b.method === "pix" ? (
           <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm">

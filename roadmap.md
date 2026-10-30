@@ -11,3 +11,6 @@
 - [x] Salvar endereço e telefone da arena no site.
 - [x] Colocar bolinha flutuante do WhatsApp no site.
 - [ ] Ativar Pix real: precisa do token do Mercado Pago (secret) e do cadastro do webhook.
+- [ ] Migrar banco do site para o Neon do cliente (aguarda conexão Neon + confirmação)
+- [ ] Pagamentos Pix: aguarda token Mercado Pago
+- [x] Vídeo enviado no fundo do hero da página inicial

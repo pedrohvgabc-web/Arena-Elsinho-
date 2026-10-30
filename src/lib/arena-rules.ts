@@ -81,4 +81,26 @@ export function validateSlot(dateISO: string, start: string, now = new Date()): 
 export const formatBRL = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+/** How many hourly slots one customer may book at once. */
+export const MAX_SLOTS = 8;
+
+/** Total for N slots of the same space. */
+export const totalCents = (priceCents: number, count: number) => priceCents * Math.max(0, count);
+
+/** Merge selected hourly starts into continuous ranges: ["19:00","20:00","22:00"] -> [["19:00","21:00"],["22:00","23:00"]]. */
+export function groupRanges(starts: string[], slotMinutes = SLOT_MINUTES): Array<[string, string]> {
+  const uniq = [...new Set(starts)].sort();
+  const out: Array<[string, string]> = [];
+  for (const s of uniq) {
+    const last = out[out.length - 1];
+    if (last && toMin(s) === toMin(last[1])) last[1] = toHHMM(toMin(last[1]) + slotMinutes);
+    else out.push([s, toHHMM(toMin(s) + slotMinutes)]);
+  }
+  return out;
+}
+
+/** "19:00 – 21:00 · 22:00" for display. */
+export const formatRanges = (starts: string[]) =>
+  groupRanges(starts).map(([a, b]) => (a === b ? a : `${a} – ${b}`)).join(" · ");
+
 export const maskPhone = (p: string) => (p.length >= 10 ? `(${p.slice(0, 2)}) •••••-${p.slice(-4)}` : "•••");

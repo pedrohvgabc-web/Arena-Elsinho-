@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Users, Timer, Lightbulb, ShowerHead, Coffee, Heart, Play, Trophy, Target, Handshake, ArrowRight } from "lucide-react";
 import hero from "@/assets/hero.webp";
+import heroVideo from "@/assets/hero-video.mp4.asset.json";
 import escolinha from "@/assets/escolinha.webp.asset.json";
 import bancada from "@/assets/bancada.webp.asset.json";
 import { getSpaces } from "@/lib/arena.functions";
@@ -104,6 +105,12 @@ function Index() {
           height={1088}
           fetchPriority="high" decoding="async" className="hero-img absolute inset-0 -z-20 h-full w-full object-cover"
           style={{ translate: "0 var(--py, 0px)" }}
+        />
+        <video
+          src={heroVideo.url}
+          poster={hero}
+          autoPlay muted loop playsInline preload="metadata" aria-hidden="true"
+          className="absolute inset-0 -z-20 h-full w-full object-cover motion-reduce:hidden"
         />
         <div className="absolute inset-0 -z-10 bg-hero-fade" />
         <div className="spotlight pointer-events-none absolute inset-0 -z-10" aria-hidden />

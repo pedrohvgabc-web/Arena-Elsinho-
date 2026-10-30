@@ -32,6 +32,7 @@ export function Header() {
             <a key={n.href} href={n.href} className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">{n.label}</a>
           ))}
           <Link to="/reservar" className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">Reservar horário</Link>
+          <a href={SITE.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram da Arena Elsinho" title="Instagram @arena.elsinho" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition-colors hover:text-primary"><Instagram className="h-4 w-4" /></a>
           <Button asChild variant="ghost" size="sm" className="text-muted-foreground"><Link to="/admin"><ShieldUser />Admin</Link></Button>
           <Magnetic strength={0.3}>
             <Link to="/reservar" className="btn-jelly rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-glow">Reservar agora</Link>
@@ -47,6 +48,7 @@ export function Header() {
           {nav.map((n) => (
             <a key={n.href} href={n.href} onClick={() => setOpen(false)} className="block py-3 text-muted-foreground transition-colors hover:text-foreground">{n.label}</a>
           ))}
+          <a href={SITE.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 py-3 text-muted-foreground transition-colors hover:text-foreground"><Instagram className="h-4 w-4 text-primary" />Instagram @arena.elsinho</a>
           <Link to="/reservar" onClick={() => setOpen(false)} className="mt-2 block rounded-full bg-primary py-3 text-center font-bold text-primary-foreground">Reservar agora</Link>
         </nav>
       )}

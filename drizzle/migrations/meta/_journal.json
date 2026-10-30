@@ -8,6 +8,13 @@
       "when": 1792853301506,
       "tag": "0000_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793244734118,
+      "tag": "0001_booking_group_code",
+      "breakpoints": true
     }
   ]
 }

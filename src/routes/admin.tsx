@@ -75,9 +75,22 @@ function Dashboard() {
 
   const rows = useMemo(() => (day.data?.bookings ?? []).filter((b) =>
     (space === "all" || b.space_id === space) && (status === "all" || b.payment_status === status) &&
-    (!search || b.customer_name.toLowerCase().includes(search.toLowerCase()) || b.booking_code.includes(search.toUpperCase()))), [day.data, search, space, status]);
+    (!search || b.customer_name.toLowerCase().includes(search.toLowerCase()) || (b.group_code ?? b.booking_code).includes(search.toUpperCase()))), [day.data, search, space, status]);
 
   const all = day.data?.bookings ?? [];
+  const groups = useMemo(() => {
+    const m = new Map<string, { total: number; times: string[] }>();
+    for (const b of all) {
+      if (b.payment_status === "cancelled") continue;
+      const g = b.group_code ?? b.booking_code;
+      const e = m.get(g) ?? { total: 0, times: [] };
+      e.total += b.amount_cents;
+      e.times.push(b.start_time.slice(0, 5));
+      m.set(g, e);
+    }
+    for (const e of m.values()) e.times.sort();
+    return m;
+  }, [day.data]);
   const active = all.filter((b) => b.payment_status === "pending" || b.payment_status === "paid");
   const revenue = all.filter((b) => b.payment_status === "paid").reduce((s, b) => s + b.amount_cents, 0);
   const pending = all.filter((b) => b.payment_status === "pending").length;
@@ -89,7 +102,7 @@ function Dashboard() {
 
   async function act(id: string, action: "mark_paid" | "cancel" | "note", note?: string) {
     if (action === "cancel" && !confirm("Cancelar esta reserva?")) return;
-    if (action === "mark_paid" && !confirm("Confirmar esta reserva como paga?")) return;
+    if (action === "mark_paid" && !confirm("Confirmar como paga? Todos os horários do mesmo código serão confirmados.")) return;
     const r = await update({ data: { id, action, note } });
     if (r.ok) { toast.success(action === "mark_paid" ? "Reserva confirmada" : "Atualizado"); qc.invalidateQueries({ queryKey: ["admin-day"] }); qc.invalidateQueries({ queryKey: ["admin-pending"] }); } else toast.error(r.error);
   }
@@ -140,10 +153,12 @@ function Dashboard() {
             {rows.map((b) => {
               const st = b.payment_status as PaymentStatus;
               const shown = reveal === b.id;
+              const g = groups.get(b.group_code ?? b.booking_code);
+              const code = b.group_code ?? b.booking_code;
               return (
                 <div key={b.id} className="grid gap-2 rounded-2xl border border-border bg-card p-4 lg:grid-cols-[90px_1.4fr_150px_1.3fr_130px_110px_auto] lg:items-center lg:gap-3 lg:rounded-none lg:border-0 lg:border-t lg:bg-transparent">
                   <span className="font-display text-xl font-bold">{b.start_time.slice(0, 5)}</span>
-                  <div><p className="font-medium">{b.customer_name}</p><p className="text-xs text-muted-foreground">{b.booking_code}{b.notes ? ` · ${b.notes}` : ""}</p></div>
+                  <div><p className="font-medium">{b.customer_name}</p><p className="text-xs text-muted-foreground">{code}{g && g.times.length > 1 ? ` · ${g.times.length} horários (${g.times.join(", ")})` : ""}{b.notes ? ` · ${b.notes}` : ""}</p></div>
                   <span className="flex items-center gap-1 text-sm">
                     {shown ? b.phone : maskPhone(b.phone)}
                     <button aria-label={shown ? "Ocultar telefone" : "Mostrar telefone"} onClick={() => setReveal(shown ? null : b.id)} className="p-1">{shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
@@ -155,7 +170,7 @@ function Dashboard() {
                     {st === "pending" && <IconBtn label="Confirmar reserva" onClick={() => act(b.id, "mark_paid")}><Check className="h-4 w-4 text-success" /></IconBtn>}
                     <IconBtn label="Copiar WhatsApp" onClick={() => { navigator.clipboard.writeText(b.phone); toast.success("Copiado"); }}><Copy className="h-4 w-4" /></IconBtn>
                     <a aria-label="Enviar confirmação" title="Enviar confirmação" target="_blank" rel="noopener noreferrer" className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:bg-accent"
-                      href={`https://wa.me/55${b.phone}?text=${encodeURIComponent(`Olá, ${b.customer_name.split(" ")[0]}! Confirmando sua reserva ${b.booking_code} na Arena Elsinho: ${spaceName(b.space_id)}, ${b.booking_date.split("-").reverse().join("/")} às ${b.start_time.slice(0, 5)}. Valor ${formatBRL(b.amount_cents)}.`)}`}><MessageCircle className="h-4 w-4" /></a>
+                      href={`https://wa.me/55${b.phone}?text=${encodeURIComponent(`Olá, ${b.customer_name.split(" ")[0]}! Confirmando sua reserva ${code} na Arena Elsinho: ${spaceName(b.space_id)}, ${b.booking_date.split("-").reverse().join("/")} às ${(g?.times ?? [b.start_time.slice(0, 5)]).join(", ")}. Valor ${formatBRL(g?.total ?? b.amount_cents)}.`)}`}><MessageCircle className="h-4 w-4" /></a>
                     <IconBtn label="Registrar observação" onClick={() => { const n = prompt("Observação", b.notes ?? ""); if (n !== null) act(b.id, "note", n); }}><StickyNote className="h-4 w-4" /></IconBtn>
                     {(st === "pending" || st === "paid") && <IconBtn label="Cancelar reserva" onClick={() => act(b.id, "cancel")}><X className="h-4 w-4 text-destructive" /></IconBtn>}
                   </div>

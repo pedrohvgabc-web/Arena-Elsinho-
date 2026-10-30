@@ -5,7 +5,7 @@ export const SITE = {
   phoneDisplay: "(69) 9270-7000",
   address: "R. Machado de Assis – Cuniã, Porto Velho – RO, 76824-476",
   addressQuery: "R.+Machado+de+Assis,+Cuni%C3%A3,+Porto+Velho+-+RO,+76824-476",
-  instagram: "https://www.instagram.com/reel/DP1Ws61EbB2/",
+  instagram: "https://www.instagram.com/arena.elsinho",
   reel: "https://www.instagram.com/reel/DP1Ws61EbB2/",
 };
 export const waLink = (text: string) =>
