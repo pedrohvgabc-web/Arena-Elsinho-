@@ -1,29 +1,82 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { validateSlot, normalizePhone, slotsFor, arenaNow, totalCents, MAX_SLOTS } from "./arena-rules";
+import {
+  validateSlot,
+  normalizePhone,
+  slotsFor,
+  arenaNow,
+  totalCents,
+  MAX_SLOTS,
+  weekdayOf,
+  toMin,
+  type OpeningWindow,
+} from "./arena-rules";
 import { tournamentRegistrationSchema } from "./tournament-schema";
 
-type SpaceRow = { id: string; name: string; sport: string; capacity: number; slot_minutes: number; price_cents: number; active: boolean };
-type AvailabilityRow = { start_time: string; payment_status: string };
+type SpaceRow = {
+  id: string;
+  name: string;
+  sport: string;
+  capacity: number | null;
+  slot_minutes: number;
+  price_cents: number | null;
+  active: boolean;
+  unit_id: string;
+};
+type AvailabilityRow = { start_time: string; end_time: string; payment_status: string };
 type GroupCodeRow = { group_code: string };
-type SpacePriceRow = { id: string; price_cents: number };
+type SpacePriceRow = {
+  id: string;
+  price_cents: number | null;
+  slot_minutes: number;
+  unit_id: string;
+};
 type OccupiedRow = { start_time: string };
+type HoursRow = { windows: unknown };
 type InsertedBookingRow = { id: string };
 type PublicBookingRow = {
-  group_code: string; booking_date: string; start_time: string; end_time: string;
-  payment_method: string; payment_status: string; amount_cents: number; expires_at: string | null;
-  customer_name: string; space_name: string | null; pix_payload: string | null; is_simulated: boolean | null;
+  group_code: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  payment_method: string;
+  payment_status: string;
+  amount_cents: number;
+  expires_at: string | null;
+  customer_name: string;
+  space_name: string | null;
+  pix_payload: string | null;
+  is_simulated: boolean | null;
 };
 type AdminSessionRow = { id: string };
 type BookingAdminRow = {
-  id: string; booking_code: string; group_code: string; booking_date: string; start_time: string; end_time: string;
-  customer_name: string; phone: string; payment_method: string; payment_status: string; amount_cents: number;
-  notes: string | null; space_id: string; created_at: string;
+  id: string;
+  booking_code: string;
+  group_code: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  customer_name: string;
+  phone: string;
+  payment_method: string;
+  payment_status: string;
+  amount_cents: number;
+  notes: string | null;
+  space_id: string;
+  created_at: string;
 };
 type AdminSpaceRow = { id: string; name: string };
 type BookingPendingRow = {
-  id: string; booking_code: string; group_code: string; booking_date: string; start_time: string;
-  customer_name: string; payment_method: string; amount_cents: number; space_id: string; space_name: string | null;
+  id: string;
+  booking_code: string;
+  group_code: string;
+  booking_date: string;
+  start_time: string;
+  customer_name: string;
+  payment_method: string;
+  amount_cents: number;
+  space_id: string;
+  space_name: string | null;
 };
 type LockedBookingRow = { payment_method: string; payment_status: string; group_code: string };
 
@@ -31,7 +84,9 @@ const database = async () => (await import("./db.server")).getDb();
 
 async function sha256(s: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 function randomCode(len: number, alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789") {
   const bytes = crypto.getRandomValues(new Uint8Array(len));
@@ -39,6 +94,19 @@ function randomCode(len: number, alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789") 
 }
 function errorCode(error: unknown) {
   return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
+}
+
+function normalizeWindows(value: unknown): OpeningWindow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const start = typeof row["start"] === "string" ? row["start"] : "";
+    const end = typeof row["end"] === "string" ? row["end"] : "";
+    return /^\d{2}:\d{2}$/.test(start) && /^\d{2}:\d{2}$/.test(end) && toMin(end) > toMin(start)
+      ? [{ start, end }]
+      : [];
+  });
 }
 
 /** Fixed-window rate limit stored atomically in the database (workers are stateless). */
@@ -67,9 +135,17 @@ async function rateLimit(key: string, max: number, windowSec: number) {
 }
 async function clientKey() {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
-  return (getRequestHeader("cf-connecting-ip") || getRequestHeader("x-forwarded-for") || "anon").split(",")[0]!.trim();
+  return (getRequestHeader("cf-connecting-ip") || getRequestHeader("x-forwarded-for") || "anon")
+    .split(",")[0]!
+    .trim();
 }
-async function audit(actor: string, action: string, entity?: string, entityId?: string, details?: Record<string, unknown>) {
+async function audit(
+  actor: string,
+  action: string,
+  entity?: string,
+  entityId?: string,
+  details?: Record<string, unknown>,
+) {
   const db = await database();
   await db`
     INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
@@ -85,15 +161,19 @@ let spacesPending: Promise<SpaceRow[]> | undefined;
 
 export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
   if (spacesCache && spacesCache.expiresAt > Date.now()) return spacesCache.rows;
-  const pending = spacesPending ?? (spacesPending = (async () => {
-    const db = await database();
-    const rows = (await db`
-      SELECT id, name, sport, capacity, slot_minutes, price_cents, active
-      FROM public.arena_spaces ORDER BY sort_order
+  const pending =
+    spacesPending ??
+    (spacesPending = (async () => {
+      const db = await database();
+      const rows = (await db`
+      SELECT id, name, sport, capacity, slot_minutes, price_cents, active, unit_id
+      FROM public.arena_spaces
+      WHERE unit_id IS NOT NULL AND active = true AND price_cents > 0
+      ORDER BY sort_order
     `) as unknown as SpaceRow[];
-    spacesCache = { rows, expiresAt: Date.now() + SPACE_CACHE_TTL_MS };
-    return rows;
-  })());
+      spacesCache = { rows, expiresAt: Date.now() + SPACE_CACHE_TTL_MS };
+      return rows;
+    })());
   try {
     return await pending;
   } finally {
@@ -103,29 +183,68 @@ export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
 
 /** Retorna somente ocupação (sem dados pessoais). */
 export const getAvailability = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ spaceId: z.string().max(40), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+  .inputValidator(
+    z.object({ spaceId: z.string().max(40), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  )
   .handler(async ({ data }) => {
     const db = await database();
-    const rows = (await db`
-      SELECT to_char(start_time, 'HH24:MI') AS start_time, payment_status
+    const spaces = (await db`
+      SELECT id, unit_id, slot_minutes FROM public.arena_spaces
+      WHERE id = ${data.spaceId} AND active = true AND price_cents > 0 AND unit_id IS NOT NULL
+      LIMIT 1
+    `) as unknown as Array<{ id: string; unit_id: string; slot_minutes: number }>;
+    const space = spaces[0];
+    if (!space) return [];
+    const [rows, hoursRows] = await Promise.all([
+      db`
+      SELECT to_char(start_time, 'HH24:MI') AS start_time,
+        to_char(end_time, 'HH24:MI') AS end_time, payment_status
       FROM public.bookings
       WHERE space_id = ${data.spaceId} AND booking_date = ${data.date}::date
         AND payment_status IN ('pending', 'paid')
-    `) as unknown as AvailabilityRow[];
-    const taken = new Map(rows.map((r) => [String(r.start_time), String(r.payment_status)]));
-    return slotsFor(data.date).map((s) => {
-      const status = taken.get(s.start);
-      const valid = validateSlot(data.date, s.start);
-      return { ...s, status: status === "paid" ? "confirmed" : status === "pending" ? "pending" : valid.ok ? "available" : "unavailable" } as const;
+      `,
+      db`
+        SELECT windows FROM public.arena_weekly_hours
+        WHERE unit_id = ${space.unit_id} AND weekday = ${weekdayOf(data.date)}
+        LIMIT 1
+      `,
+    ]);
+    const occupied = (rows as unknown as AvailabilityRow[]).map((row) => ({
+      start: String(row.start_time),
+      end: String(row.end_time),
+      status: String(row.payment_status),
+    }));
+    const windows = normalizeWindows((hoursRows as unknown as HoursRow[])[0]?.windows);
+    return slotsFor(data.date, windows, Number(space.slot_minutes)).map((s) => {
+      const conflict = occupied.find(
+        (booked) => toMin(booked.start) < toMin(s.end) && toMin(booked.end) > toMin(s.start),
+      );
+      const valid = validateSlot(data.date, s.start, windows, Number(space.slot_minutes));
+      return {
+        ...s,
+        status:
+          conflict?.status === "paid"
+            ? "confirmed"
+            : conflict?.status === "pending"
+              ? "pending"
+              : valid.ok
+                ? "available"
+                : "unavailable",
+      } as const;
     });
   });
 
 const bookingSchema = z.object({
+  unitId: z.enum(["unidade-1", "unidade-2"]),
   spaceId: z.string().min(1).max(40),
   date: z.string(),
-  starts: z.array(z.string().regex(/^\d{2}:\d{2}$/, "Horário inválido.")).min(1, "Escolha ao menos um horário.").max(MAX_SLOTS, `Escolha até ${MAX_SLOTS} horários.`),
+  starts: z
+    .array(z.string().regex(/^\d{2}:\d{2}$/, "Horário inválido."))
+    .min(1, "Escolha ao menos um horário.")
+    .max(MAX_SLOTS, `Escolha até ${MAX_SLOTS} horários.`),
   name: z.string().trim().min(3, "Informe o nome completo.").max(80),
   phone: z.string().max(30),
+  notes: z.string().trim().max(500).optional().default(""),
   method: z.enum(["pix", "card_onsite", "cash_onsite"]),
   idempotencyKey: z.string().uuid(),
 });
@@ -135,10 +254,12 @@ export const createBooking = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const db = await database();
     // Idempotência: mesma chave devolve a mesma reserva, antes de consumir rate limit.
-    const previous = (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
+    const previous =
+      (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
     if (previous[0]) return getPublicBooking(String(previous[0].group_code));
 
-    if (!(await rateLimit(`book:${await clientKey()}`, 10, 600))) return { ok: false as const, error: "Muitas tentativas. Aguarde alguns minutos." };
+    if (!(await rateLimit(`book:${await clientKey()}`, 10, 600)))
+      return { ok: false as const, error: "Muitas tentativas. Aguarde alguns minutos." };
 
     const phone = normalizePhone(data.phone);
     if (!phone) return { ok: false as const, error: "WhatsApp inválido. Use DDD + número." };
@@ -146,26 +267,42 @@ export const createBooking = createServerFn({ method: "POST" })
 
     // Same slot picked twice is a click mistake, not a second reservation.
     const starts = [...new Set(data.starts)].sort();
-    const slots: Array<{ start: string; end: string }> = [];
-    for (const start of starts) {
-      const valid = validateSlot(data.date, start);
-      if (!valid.ok) return { ok: false as const, error: valid.reason };
-      slots.push({ start, end: valid.end });
-    }
 
-    const code = `AE-${randomCode(6)}`;
-    const expires = data.method === "pix" ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
+    const code = `AL-${randomCode(6)}`;
+    const expires =
+      data.method === "pix" ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
     try {
       const outcome = await db.begin(async (tx) => {
-        const previousInTransaction = (await tx`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
-        if (previousInTransaction[0]) return { code: String(previousInTransaction[0].group_code), error: null as string | null };
+        const previousInTransaction =
+          (await tx`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
+        if (previousInTransaction[0])
+          return {
+            code: String(previousInTransaction[0].group_code),
+            error: null as string | null,
+          };
 
         const spaces = (await tx`
-          SELECT id, price_cents FROM public.arena_spaces
-          WHERE id = ${data.spaceId} AND active = true FOR SHARE
+          SELECT id, price_cents, slot_minutes, unit_id FROM public.arena_spaces
+          WHERE id = ${data.spaceId} AND unit_id = ${data.unitId}
+            AND active = true AND price_cents > 0
+          FOR SHARE
         `) as unknown as SpacePriceRow[];
         const space = spaces[0];
-        if (!space) return { code: null, error: "Espaço inexistente ou indisponível." };
+        if (!space || space.price_cents === null)
+          return { code: null, error: "Quadra indisponível ou ainda sem preço configurado." };
+
+        const hoursRows = (await tx`
+          SELECT windows FROM public.arena_weekly_hours
+          WHERE unit_id = ${space.unit_id} AND weekday = ${weekdayOf(data.date)}
+          LIMIT 1
+        `) as unknown as HoursRow[];
+        const windows = normalizeWindows(hoursRows[0]?.windows);
+        const slots: Array<{ start: string; end: string }> = [];
+        for (const start of starts) {
+          const valid = validateSlot(data.date, start, windows, Number(space.slot_minutes));
+          if (!valid.ok) return { code: null, error: valid.reason };
+          slots.push({ start, end: valid.end });
+        }
 
         // Give the customer a clear response before creating a payment; the exclusion
         // constraint remains the final protection against concurrent reservations.
@@ -191,11 +328,11 @@ export const createBooking = createServerFn({ method: "POST" })
             INSERT INTO public.bookings (
               booking_code, group_code, idempotency_key, space_id, booking_date,
               start_time, end_time, customer_name, phone, payment_method,
-              amount_cents, expires_at
+              amount_cents, expires_at, notes
             ) VALUES (
               ${bookingCode}, ${code}, ${rowKey}, ${space.id}, ${data.date}::date,
               ${slot.start}::time, ${slot.end}::time, ${name}, ${phone}, ${data.method},
-              ${space.price_cents}, ${expires}::timestamptz
+              ${space.price_cents}, ${expires}::timestamptz, ${data.notes || null}
             ) RETURNING id
           `) as unknown as InsertedBookingRow[];
           if (rows[0]) inserted.push({ id: String(rows[0].id) });
@@ -203,9 +340,10 @@ export const createBooking = createServerFn({ method: "POST" })
 
         // One charge (and one QR Code) covers the whole reservation. It is created
         // within this transaction so the payment and all booking rows commit together.
-        const amount = totalCents(Number(space.price_cents), slots.length);
+        const amount = totalCents(space.price_cents, slots.length);
         const { createPixCharge } = await import("./payments.server");
-        const pix = data.method === "pix" ? await createPixCharge({ code, amountCents: amount }) : null;
+        const pix =
+          data.method === "pix" ? await createPixCharge({ code, amountCents: amount }) : null;
         for (const [index, booking] of inserted.entries()) {
           // provider_ref is unique in the existing schema; one charge belongs to the
           // first row, while the remaining rows retain their per-slot payment state.
@@ -215,8 +353,8 @@ export const createBooking = createServerFn({ method: "POST" })
               is_simulated, pix_payload
             ) VALUES (
               ${booking.id}::uuid, ${data.method}, ${space.price_cents},
-              ${pix?.provider ?? "onsite"}, ${index === 0 ? pix?.ref ?? null : null},
-              ${pix?.simulated ?? false}, ${index === 0 ? pix?.payload ?? null : null}
+              ${pix?.provider ?? "onsite"}, ${index === 0 ? (pix?.ref ?? null) : null},
+              ${pix?.simulated ?? false}, ${index === 0 ? (pix?.payload ?? null) : null}
             )
           `;
         }
@@ -233,11 +371,16 @@ export const createBooking = createServerFn({ method: "POST" })
       const codeFromError = errorCode(error);
       if (codeFromError === "23505") {
         // A concurrent retry may have committed the same idempotency key.
-        const previousAfterConflict = (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
-        if (previousAfterConflict[0]) return getPublicBooking(String(previousAfterConflict[0].group_code));
+        const previousAfterConflict =
+          (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
+        if (previousAfterConflict[0])
+          return getPublicBooking(String(previousAfterConflict[0].group_code));
       }
       if (codeFromError === "23P01" || codeFromError === "23505") {
-        return { ok: false as const, error: "Um dos horários acabou de ser reservado. Escolha outro." };
+        return {
+          ok: false as const,
+          error: "Um dos horários acabou de ser reservado. Escolha outro.",
+        };
       }
       console.error("booking insert failed", codeFromError);
       return { ok: false as const, error: "Não foi possível concluir a reserva." };
@@ -268,21 +411,35 @@ async function getPublicBooking(code: string) {
   return {
     ok: true as const,
     booking: {
-      code: String(first.group_code), date: String(first.booking_date), start: String(first.start_time), end: String(last.end_time),
+      code: String(first.group_code),
+      date: String(first.booking_date),
+      start: String(first.start_time),
+      end: String(last.end_time),
       slots: rows.map((row) => ({ start: String(row.start_time), end: String(row.end_time) })),
-      method: first.payment_method, status: first.payment_status,
+      method: first.payment_method,
+      status: first.payment_status,
       amount: rows.reduce((sum, row) => sum + Number(row.amount_cents), 0),
-      expiresAt: first.expires_at, firstName: String(first.customer_name).split(" ")[0],
-      space: String(first.space_name ?? ""), pixPayload: first.pix_payload ?? null,
+      expiresAt: first.expires_at,
+      firstName: String(first.customer_name).split(" ")[0],
+      space: String(first.space_name ?? ""),
+      pixPayload: first.pix_payload ?? null,
       pixSimulated: Boolean(first.is_simulated ?? false),
     },
   };
 }
 
 export const submitPrivacyRequest = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ name: z.string().trim().min(3).max(80), phone: z.string().max(30), type: z.enum(["access", "deletion", "correction"]), message: z.string().max(1000).optional() }))
+  .inputValidator(
+    z.object({
+      name: z.string().trim().min(3).max(80),
+      phone: z.string().max(30),
+      type: z.enum(["access", "deletion", "correction"]),
+      message: z.string().max(1000).optional(),
+    }),
+  )
   .handler(async ({ data }) => {
-    if (!(await rateLimit(`privacy:${await clientKey()}`, 5, 3600))) return { ok: false, error: "Muitas solicitações." };
+    if (!(await rateLimit(`privacy:${await clientKey()}`, 5, 3600)))
+      return { ok: false, error: "Muitas solicitações." };
     const phone = normalizePhone(data.phone);
     if (!phone) return { ok: false, error: "WhatsApp inválido." };
     const db = await database();
@@ -313,10 +470,17 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
 
     const phoneFingerprint = await sha256(`${process.env["DATABASE_URL"] ?? ""}:${phone}`);
     if (!(await rateLimit(`tournament-phone:${phoneFingerprint}`, 1, 3600))) {
-      return { ok: false as const, error: "Este WhatsApp já tem uma pré-inscrição recente. Aguarde uma hora ou fale com a Arena." };
+      return {
+        ok: false as const,
+        error:
+          "Este WhatsApp já tem uma pré-inscrição recente. Aguarde uma hora ou fale com a Arena.",
+      };
     }
     if (!(await rateLimit(`tournament:${await clientKey()}`, 8, 3600))) {
-      return { ok: false as const, error: "Muitas tentativas. Aguarde e fale com a Arena pelo WhatsApp." };
+      return {
+        ok: false as const,
+        error: "Muitas tentativas. Aguarde e fale com a Arena pelo WhatsApp.",
+      };
     }
 
     const code = `AL26-${randomCode(8)}`;
@@ -327,7 +491,8 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
           SELECT registration_code FROM public.tournament_registrations
           WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
         `) as unknown as Array<{ registration_code: string }>;
-        if (previous[0]) return { code: String(previous[0].registration_code), id: null as string | null };
+        if (previous[0])
+          return { code: String(previous[0].registration_code), id: null as string | null };
 
         const rows = (await tx`
           INSERT INTO public.tournament_registrations (
@@ -356,7 +521,10 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
         if (retry[0]) return { ok: true as const, code: String(retry[0].registration_code) };
       }
       console.error("tournament registration failed", errorCode(error));
-      return { ok: false as const, error: "Não foi possível registrar agora. Tente novamente ou fale com a Arena." };
+      return {
+        ok: false as const,
+        error: "Não foi possível registrar agora. Tente novamente ou fale com a Arena.",
+      };
     }
   });
 
@@ -389,21 +557,31 @@ export const adminTournamentRegistrations = createServerFn({ method: "GET" }).ha
     ORDER BY created_at DESC
     LIMIT 300
   `) as unknown as Array<{
-    id: string; registration_code: string; captain_name: string; captain_phone: string;
-    team_name: string; athletes: unknown; status: string; created_at: string;
+    id: string;
+    registration_code: string;
+    captain_name: string;
+    captain_phone: string;
+    team_name: string;
+    athletes: unknown;
+    status: string;
+    created_at: string;
   }>;
   return rows.map((row) => ({
     ...row,
-    athletes: Array.isArray(row.athletes) ? row.athletes.filter((name): name is string => typeof name === "string") : [],
+    athletes: Array.isArray(row.athletes)
+      ? row.athletes.filter((name): name is string => typeof name === "string")
+      : [],
     status: row.status as "pending" | "confirmed" | "cancelled",
   }));
 });
 
 export const adminSetTournamentRegistrationStatus = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    id: z.string().uuid(),
-    status: z.enum(["pending", "confirmed", "cancelled"]),
-  }))
+  .inputValidator(
+    z.object({
+      id: z.string().uuid(),
+      status: z.enum(["pending", "confirmed", "cancelled"]),
+    }),
+  )
   .handler(async ({ data }) => {
     await requireAdmin();
     const db = await database();
@@ -431,12 +609,14 @@ export const adminSetTournamentRegistrationStatus = createServerFn({ method: "PO
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator(z.object({ password: z.string().min(1).max(200) }))
   .handler(async ({ data }) => {
-    if (!(await rateLimit(`login:${await clientKey()}`, 5, 900))) return { ok: false, error: "Muitas tentativas. Tente novamente em 15 minutos." };
+    if (!(await rateLimit(`login:${await clientKey()}`, 5, 900)))
+      return { ok: false, error: "Muitas tentativas. Tente novamente em 15 minutos." };
     const expected = process.env["ADMIN_PASSWORD"];
     if (!expected) return { ok: false, error: "Acesso indisponível." };
     const [actualHash, expectedHash] = await Promise.all([sha256(data.password), sha256(expected)]);
     let diff = 0;
-    for (let i = 0; i < actualHash.length; i++) diff |= actualHash.charCodeAt(i) ^ expectedHash.charCodeAt(i);
+    for (let i = 0; i < actualHash.length; i++)
+      diff |= actualHash.charCodeAt(i) ^ expectedHash.charCodeAt(i);
     if (diff !== 0) {
       await audit("anon", "admin.login_failed");
       return { ok: false, error: "Credenciais inválidas." };
@@ -448,7 +628,13 @@ export const adminLogin = createServerFn({ method: "POST" })
       VALUES (${await sha256(token)}, ${new Date(Date.now() + SESSION_HOURS * 3600e3).toISOString()}::timestamptz)
     `;
     const { setCookie } = await import("@tanstack/react-start/server");
-    setCookie(COOKIE, token, { httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: SESSION_HOURS * 3600 });
+    setCookie(COOKIE, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      maxAge: SESSION_HOURS * 3600,
+    });
     await audit("admin", "admin.login");
     return { ok: true, error: null };
   });
@@ -465,8 +651,159 @@ export const adminLogout = createServerFn({ method: "POST" }).handler(async () =
 });
 
 export const adminCheck = createServerFn({ method: "GET" }).handler(async () => {
-  try { await requireAdmin(); return { authed: true }; } catch { return { authed: false }; }
+  try {
+    await requireAdmin();
+    return { authed: true };
+  } catch {
+    return { authed: false };
+  }
 });
+
+export const adminArenaSettings = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const db = await database();
+  const [spaceRows, hourRows] = await Promise.all([
+    db`
+      SELECT id, unit_id, name, sport, slot_minutes, price_cents, active, sort_order
+      FROM public.arena_spaces WHERE unit_id IS NOT NULL ORDER BY sort_order
+    `,
+    db`SELECT unit_id, weekday, windows FROM public.arena_weekly_hours ORDER BY unit_id, weekday`,
+  ]);
+  return {
+    spaces: (
+      spaceRows as unknown as Array<{
+        id: string;
+        unit_id: string;
+        name: string;
+        sport: string;
+        slot_minutes: number;
+        price_cents: number | null;
+        active: boolean;
+        sort_order: number;
+      }>
+    ).map((space) => ({
+      id: space.id,
+      unitId: space.unit_id,
+      name: space.name,
+      sport: space.sport,
+      slotMinutes: Number(space.slot_minutes),
+      priceCents: space.price_cents === null ? null : Number(space.price_cents),
+      active: Boolean(space.active),
+      sortOrder: Number(space.sort_order),
+    })),
+    hours: (
+      hourRows as unknown as Array<{ unit_id: string; weekday: number; windows: unknown }>
+    ).map((row) => ({
+      unitId: row.unit_id,
+      weekday: Number(row.weekday),
+      windows: normalizeWindows(row.windows),
+    })),
+  };
+});
+
+const adminSpaceSchema = z
+  .object({
+    id: z.string().min(1).max(40),
+    name: z.string().trim().min(2).max(80),
+    priceCents: z.number().int().min(1).max(10_000_000).nullable(),
+    slotMinutes: z
+      .number()
+      .int()
+      .min(30)
+      .max(180)
+      .refine((value) => value % 15 === 0),
+    active: z.boolean(),
+  })
+  .superRefine((space, ctx) => {
+    if (space.active && (space.priceCents === null || space.priceCents <= 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["priceCents"],
+        message: "Informe um preço maior que zero antes de ativar a quadra.",
+      });
+    }
+  });
+
+export const adminUpdateArenaSpace = createServerFn({ method: "POST" })
+  .inputValidator(adminSpaceSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    const result = await db.begin(async (tx) => {
+      const found = (await tx`
+        SELECT id FROM public.arena_spaces
+        WHERE id = ${data.id} AND unit_id IS NOT NULL FOR UPDATE
+      `) as unknown as Array<{ id: string }>;
+      if (!found[0]) return { ok: false as const, error: "Quadra não encontrada." };
+      await tx`
+        UPDATE public.arena_spaces
+        SET name = ${data.name}, price_cents = ${data.priceCents},
+            slot_minutes = ${data.slotMinutes}, active = ${data.active}
+        WHERE id = ${data.id} AND unit_id IS NOT NULL
+      `;
+      await tx`
+        INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+        VALUES ('admin', 'arena.space.update', 'arena_space', ${data.id}, ${JSON.stringify({ name: data.name, priceCents: data.priceCents, slotMinutes: data.slotMinutes, active: data.active })}::jsonb)
+      `;
+      return { ok: true as const, error: null };
+    });
+    spacesCache = undefined;
+    return result;
+  });
+
+const weeklyHoursSchema = z
+  .object({
+    unitId: z.enum(["unidade-1", "unidade-2"]),
+    weekday: z.number().int().min(0).max(6),
+    windows: z
+      .array(
+        z.object({
+          start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+          end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+        }),
+      )
+      .max(2),
+  })
+  .superRefine((schedule, ctx) => {
+    const ordered = [...schedule.windows].sort((a, b) => a.start.localeCompare(b.start));
+    for (const [index, window] of ordered.entries()) {
+      if (toMin(window.end) <= toMin(window.start)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["windows", index],
+          message: "O fechamento deve ser depois da abertura.",
+        });
+      }
+      const previous = ordered[index - 1];
+      if (previous && toMin(window.start) < toMin(previous.end)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["windows", index],
+          message: "Os intervalos não podem se sobrepor.",
+        });
+      }
+    }
+  });
+
+export const adminUpdateArenaHours = createServerFn({ method: "POST" })
+  .inputValidator(weeklyHoursSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    await db.begin(async (tx) => {
+      await tx`
+        INSERT INTO public.arena_weekly_hours (unit_id, weekday, windows, updated_at)
+        VALUES (${data.unitId}, ${data.weekday}, ${JSON.stringify(data.windows)}::jsonb, now())
+        ON CONFLICT (unit_id, weekday) DO UPDATE
+        SET windows = EXCLUDED.windows, updated_at = now()
+      `;
+      await tx`
+        INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+        VALUES ('admin', 'arena.hours.update', 'arena_weekly_hours', ${`${data.unitId}:${data.weekday}`}, ${JSON.stringify({ windows: data.windows })}::jsonb)
+      `;
+    });
+    return { ok: true as const, error: null };
+  });
 
 export const adminDay = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
@@ -484,13 +821,42 @@ export const adminDay = createServerFn({ method: "GET" })
           to_char(start_time, 'HH24:MI:SS') AS start_time, to_char(end_time, 'HH24:MI:SS') AS end_time,
           customer_name, phone, payment_method, payment_status, amount_cents, notes,
           space_id, created_at::text AS created_at
-        FROM public.bookings WHERE booking_date = ${data.date}::date ORDER BY start_time
+        FROM public.bookings b
+        WHERE booking_date = ${data.date}::date
+          AND EXISTS (
+            SELECT 1 FROM public.arena_spaces s WHERE s.id = b.space_id AND s.unit_id IS NULL
+          )
+        ORDER BY start_time
       `,
-      db`SELECT id, name FROM public.arena_spaces ORDER BY sort_order`,
+      db`SELECT id, name FROM public.arena_spaces WHERE unit_id IS NULL ORDER BY sort_order`,
     ]);
     const bookings = bookingRows as unknown as BookingAdminRow[];
     const spaces = spaceRows as unknown as AdminSpaceRow[];
-    return { bookings, spaces, slotsPerSpace: slotsFor(data.date).length };
+    return { bookings, spaces, slotsPerSpace: 0 };
+  });
+
+export const adminCurrentDay = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    await db`
+      UPDATE public.bookings SET payment_status = 'expired', updated_at = now()
+      WHERE payment_status = 'pending' AND payment_method = 'pix' AND expires_at < now()
+    `;
+    const rows = (await db`
+      SELECT b.id, b.booking_code, b.group_code, b.booking_date::text AS booking_date,
+        to_char(b.start_time, 'HH24:MI:SS') AS start_time,
+        to_char(b.end_time, 'HH24:MI:SS') AS end_time,
+        b.customer_name, b.phone, b.payment_method, b.payment_status, b.amount_cents,
+        b.notes, b.space_id, b.created_at::text AS created_at,
+        s.name AS space_name, s.unit_id
+      FROM public.bookings b
+      INNER JOIN public.arena_spaces s ON s.id = b.space_id
+      WHERE b.booking_date = ${data.date}::date AND s.unit_id IN ('unidade-1', 'unidade-2')
+      ORDER BY b.start_time
+    `) as unknown as Array<BookingAdminRow & { space_name: string; unit_id: string }>;
+    return { bookings: rows };
   });
 
 export const adminPending = createServerFn({ method: "GET" }).handler(async () => {
@@ -506,6 +872,7 @@ export const adminPending = createServerFn({ method: "GET" }).handler(async () =
       b.payment_method, b.amount_cents, b.space_id, s.name AS space_name
     FROM public.bookings b LEFT JOIN public.arena_spaces s ON s.id = b.space_id
     WHERE b.payment_status = 'pending' AND b.booking_date >= ${arenaNow().date}::date
+      AND s.unit_id IS NULL
     ORDER BY b.booking_date, b.start_time LIMIT 100
   `) as unknown as BookingPendingRow[];
   return rows.map((row) => ({
@@ -516,7 +883,13 @@ export const adminPending = createServerFn({ method: "GET" }).handler(async () =
 });
 
 export const adminUpdateBooking = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ id: z.string().uuid(), action: z.enum(["mark_paid", "cancel", "note"]), note: z.string().max(500).optional() }))
+  .inputValidator(
+    z.object({
+      id: z.string().uuid(),
+      action: z.enum(["mark_paid", "cancel", "note"]),
+      note: z.string().max(500).optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     await requireAdmin();
     const db = await database();
@@ -531,7 +904,8 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
 
       if (data.action === "mark_paid") {
         // Confirmação manual pelo administrador; um Pix pode cobrir todo o grupo.
-        if (booking.payment_status !== "pending") return { ok: false, error: "Reserva não está pendente." };
+        if (booking.payment_status !== "pending")
+          return { ok: false, error: "Reserva não está pendente." };
         await tx`
           SELECT id FROM public.bookings
           WHERE group_code = ${booking.group_code} AND payment_status = 'pending'
@@ -551,15 +925,17 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
         await tx`
           UPDATE public.bookings
           SET payment_status = 'cancelled', cancelled_at = ${now}::timestamptz, updated_at = ${now}::timestamptz
-          WHERE id = ${data.id}::uuid
+          WHERE group_code = ${booking.group_code} AND payment_status IN ('pending', 'paid')
         `;
         await tx`
           UPDATE public.payments SET status = 'cancelled', updated_at = ${now}::timestamptz
-          WHERE booking_id = ${data.id}::uuid
+          WHERE booking_id IN (
+            SELECT id FROM public.bookings WHERE group_code = ${booking.group_code} AND payment_status = 'cancelled'
+          )
         `;
       } else {
         await tx`
-          UPDATE public.bookings SET notes = ${((data.note ?? "").replace(/[<>]/g, ""))}, updated_at = ${now}::timestamptz
+          UPDATE public.bookings SET notes = ${(data.note ?? "").replace(/[<>]/g, "")}, updated_at = ${now}::timestamptz
           WHERE id = ${data.id}::uuid
         `;
       }

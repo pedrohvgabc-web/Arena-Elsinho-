@@ -1,7 +1,8 @@
-// Legacy booking business rules. New Arena Leste bookings are initiated by WhatsApp.
-export const ARENA_TZ = "America/Cuiaba";
+// Regras de reserva da Arena Leste. A grade de cada unidade vem do Neon.
+export const ARENA_TZ = "America/Porto_Velho";
 export const SLOT_MINUTES = 60;
 
+export type OpeningWindow = { start: string; end: string };
 export type PaymentMethod = "pix" | "card_onsite" | "cash_onsite";
 export type PaymentStatus = "pending" | "paid" | "cancelled" | "expired" | "failed";
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
@@ -17,40 +18,60 @@ export const STATUS_LABEL: Record<PaymentStatus, string> = {
   failed: "Falhou",
 };
 
-/** Opening windows in minutes from midnight, by weekday (0 = Sunday). */
-export function openingWindows(weekday: number): Array<[number, number]> {
-  if (weekday === 0) return [];
-  if (weekday === 1) return [[9 * 60, 18 * 60]];
-  return [
-    [8 * 60, 12 * 60],
-    [14 * 60, 23 * 60 + 59],
-  ];
-}
-
-export const toMin = (t: string) => {
-  const [h = 0, m = 0] = t.split(":").map(Number);
-  return h * 60 + m;
+export const toMin = (time: string) => {
+  const [hour = 0, minute = 0] = time.split(":").map(Number);
+  return hour * 60 + minute;
 };
-export const toHHMM = (min: number) =>
-  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+export const toHHMM = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 export function weekdayOf(dateISO: string) {
-  const [y = 1970, m = 1, d = 1] = dateISO.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const [year = 1970, month = 1, day = 1] = dateISO.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
-/** Slots: hourly from each window start; last slot may be shortened to window end (23:00–23:59). */
-export function slotsFor(dateISO: string): Array<{ start: string; end: string }> {
+function validDate(dateISO: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return false;
+  const [year = 0, month = 0, day = 0] = dateISO.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === dateISO;
+}
+
+function validTime(time: string) {
+  if (!/^\d{2}:\d{2}$/.test(time)) return false;
+  const [hour = 99, minute = 99] = time.split(":").map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+/** Gera horários completos dentro das janelas salvas para a unidade e o dia. */
+export function slotsFor(
+  dateISO: string,
+  windows: OpeningWindow[] = [],
+  slotMinutes = SLOT_MINUTES,
+): Array<{ start: string; end: string }> {
+  if (
+    !validDate(dateISO) ||
+    !Number.isInteger(slotMinutes) ||
+    slotMinutes < 15 ||
+    slotMinutes > 240
+  )
+    return [];
   const out: Array<{ start: string; end: string }> = [];
-  for (const [open, close] of openingWindows(weekdayOf(dateISO))) {
-    for (let s = open; s + 59 <= close; s += SLOT_MINUTES) {
-      out.push({ start: toHHMM(s), end: toHHMM(Math.min(s + SLOT_MINUTES, close)) });
+  for (const window of windows) {
+    if (!validTime(window.start) || !validTime(window.end)) continue;
+    const open = toMin(window.start);
+    const close = toMin(window.end);
+    if (close <= open) continue;
+    for (let start = open; start + slotMinutes <= close; start += slotMinutes) {
+      out.push({ start: toHHMM(start), end: toHHMM(start + slotMinutes) });
     }
   }
-  return out;
+  return [...new Map(out.map((slot) => [slot.start, slot])).values()].sort((a, b) =>
+    a.start.localeCompare(b.start),
+  );
 }
 
-/** Current date and minutes in the arena timezone. */
+/** Data e minutos atuais no fuso local de Porto Velho. */
 export function arenaNow(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: ARENA_TZ,
@@ -61,10 +82,10 @@ export function arenaNow(now = new Date()) {
     minute: "2-digit",
     hour12: false,
   }).formatToParts(now);
-  const g = (t: string) => parts.find((p) => p.type === t)!.value;
+  const part = (type: string) => parts.find((item) => item.type === type)!.value;
   return {
-    date: `${g("year")}-${g("month")}-${g("day")}`,
-    minutes: (Number(g("hour")) % 24) * 60 + Number(g("minute")),
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    minutes: (Number(part("hour")) % 24) * 60 + Number(part("minute")),
   };
 }
 
@@ -75,15 +96,27 @@ export function normalizePhone(raw: string) {
 
 export type SlotCheck = { ok: true; end: string } | { ok: false; reason: string };
 
-export function validateSlot(dateISO: string, start: string, now = new Date()): SlotCheck {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO) || !/^\d{2}:\d{2}$/.test(start))
+export function validateSlot(
+  dateISO: string,
+  start: string,
+  windows: OpeningWindow[] = [],
+  slotMinutes = SLOT_MINUTES,
+  now = new Date(),
+): SlotCheck {
+  if (!validDate(dateISO) || !validTime(start))
     return { ok: false, reason: "Data ou horário inválido." };
-  if (weekdayOf(dateISO) === 0) return { ok: false, reason: "A arena não abre aos domingos." };
-  const n = arenaNow(now);
-  if (dateISO < n.date) return { ok: false, reason: "Não é possível reservar datas passadas." };
-  const slot = slotsFor(dateISO).find((s) => s.start === start);
-  if (!slot) return { ok: false, reason: "Horário fora do expediente." };
-  if (dateISO === n.date && toMin(start) <= n.minutes)
+  if (dateISO < arenaNow(now).date)
+    return { ok: false, reason: "Não é possível reservar datas passadas." };
+  const slot = slotsFor(dateISO, windows, slotMinutes).find((item) => item.start === start);
+  if (!slot)
+    return {
+      ok: false,
+      reason: windows.length
+        ? "Horário fora do expediente."
+        : "A grade desta unidade ainda não foi configurada para este dia.",
+    };
+  const current = arenaNow(now);
+  if (dateISO === current.date && toMin(start) <= current.minutes)
     return { ok: false, reason: "Esse horário já passou." };
   return { ok: true, end: slot.end };
 }
@@ -91,29 +124,25 @@ export function validateSlot(dateISO: string, start: string, now = new Date()): 
 export const formatBRL = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** How many hourly slots one customer may book at once. */
 export const MAX_SLOTS = 8;
-
-/** Total for N slots of the same space. */
 export const totalCents = (priceCents: number, count: number) => priceCents * Math.max(0, count);
 
-/** Merge selected hourly starts into continuous ranges: ["19:00","20:00","22:00"] -> [["19:00","21:00"],["22:00","23:00"]]. */
+/** Junta horários escolhidos em faixas contínuas para leitura do cliente/admin. */
 export function groupRanges(starts: string[], slotMinutes = SLOT_MINUTES): Array<[string, string]> {
-  const uniq = [...new Set(starts)].sort();
+  const unique = [...new Set(starts)].sort();
   const out: Array<[string, string]> = [];
-  for (const s of uniq) {
+  for (const start of unique) {
     const last = out[out.length - 1];
-    if (last && toMin(s) === toMin(last[1])) last[1] = toHHMM(toMin(last[1]) + slotMinutes);
-    else out.push([s, toHHMM(toMin(s) + slotMinutes)]);
+    if (last && toMin(start) === toMin(last[1])) last[1] = toHHMM(toMin(last[1]) + slotMinutes);
+    else out.push([start, toHHMM(toMin(start) + slotMinutes)]);
   }
   return out;
 }
 
-/** "19:00 – 21:00 · 22:00" for display. */
 export const formatRanges = (starts: string[]) =>
   groupRanges(starts)
-    .map(([a, b]) => (a === b ? a : `${a} – ${b}`))
+    .map(([start, end]) => (start === end ? start : `${start} – ${end}`))
     .join(" · ");
 
-export const maskPhone = (p: string) =>
-  p.length >= 10 ? `(${p.slice(0, 2)}) •••••-${p.slice(-4)}` : "•••";
+export const maskPhone = (phone: string) =>
+  phone.length >= 10 ? `(${phone.slice(0, 2)}) •••••-${phone.slice(-4)}` : "•••";

@@ -25,6 +25,8 @@ import {
   adminPending,
 } from "@/lib/arena.functions";
 import { TournamentRegistrationsAdmin } from "@/components/TournamentRegistrationsAdmin";
+import { ArenaSettingsAdmin } from "@/components/ArenaSettingsAdmin";
+import { CurrentBookingsAdmin } from "@/components/CurrentBookingsAdmin";
 import { SITE } from "@/lib/site";
 import {
   arenaNow,
@@ -181,7 +183,7 @@ function Dashboard() {
     .reduce((s, b) => s + b.amount_cents, 0);
   const pending = all.filter((b) => b.payment_status === "pending").length;
   const capacity = (day.data?.slotsPerSpace ?? 0) * (day.data?.spaces.length ?? 0);
-  const occupancy = capacity ? Math.round((active.length / capacity) * 100) : 0;
+  const occupancy = capacity ? `${Math.round((active.length / capacity) * 100)}%` : "—";
   const now = arenaNow();
   const next = active.find(
     (b) =>
@@ -226,13 +228,15 @@ function Dashboard() {
       </div>
 
       <TournamentRegistrationsAdmin />
+      <CurrentBookingsAdmin />
+      <ArenaSettingsAdmin />
 
       <details
         className="mt-8 rounded-2xl border border-border bg-card/40 p-4 sm:p-5"
         onToggle={(event) => setShowLegacy(event.currentTarget.open)}
       >
         <summary className="min-h-11 cursor-pointer py-2 font-bold">
-          Arquivo antigo de reservas — abrir se necessário
+          Arquivo de reservas da Arena Elsinho — abrir se necessário
         </summary>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Os registros abaixo pertencem ao fluxo de reservas anterior à Arena Leste. Eles não
@@ -282,7 +286,7 @@ function Dashboard() {
                 ["Receita confirmada", formatBRL(revenue)],
                 ["Reservas do dia", String(active.length)],
                 ["Pagamentos pendentes", String(pending)],
-                ["Ocupação", `${occupancy}%`],
+                ["Ocupação histórica", occupancy],
                 [
                   "Próximo horário",
                   next

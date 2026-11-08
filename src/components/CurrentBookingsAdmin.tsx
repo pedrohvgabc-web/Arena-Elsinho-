@@ -1,0 +1,331 @@
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Clock3, Loader2, MessageCircle, X } from "lucide-react";
+import { toast } from "sonner";
+import { adminCurrentDay, adminUpdateBooking } from "@/lib/arena.functions";
+import { SITE } from "@/lib/site";
+import {
+  arenaNow,
+  formatBRL,
+  PAYMENT_LABEL,
+  STATUS_LABEL,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "@/lib/arena-rules";
+
+type UnitId = "unidade-1" | "unidade-2";
+type BookingRow = {
+  id: string;
+  booking_code: string;
+  group_code: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  customer_name: string;
+  phone: string;
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
+  amount_cents: number;
+  notes: string | null;
+  space_id: string;
+  created_at: string;
+  space_name: string;
+  unit_id: UnitId;
+};
+type BookingGroup = {
+  id: string;
+  code: string;
+  date: string;
+  name: string;
+  phone: string;
+  unitId: UnitId;
+  spaceName: string;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  amountCents: number;
+  slots: Array<{ start: string; end: string }>;
+};
+
+const BADGE: Record<PaymentStatus, string> = {
+  paid: "bg-success/15 text-success",
+  pending: "bg-warning/15 text-warning",
+  cancelled: "bg-muted text-muted-foreground",
+  expired: "bg-muted text-muted-foreground",
+  failed: "bg-destructive/15 text-destructive",
+};
+
+function shiftDate(iso: string, amount: number) {
+  const date = new Date(`${iso}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatSlotRanges(slots: Array<{ start: string; end: string }>) {
+  const ranges: Array<[string, string]> = [];
+  for (const slot of [...slots].sort((a, b) => a.start.localeCompare(b.start))) {
+    const start = slot.start.slice(0, 5);
+    const end = slot.end.slice(0, 5);
+    const previous = ranges.at(-1);
+    if (previous && previous[1] === start) previous[1] = end;
+    else ranges.push([start, end]);
+  }
+  return ranges.map(([start, end]) => `${start} – ${end}`).join(" · ");
+}
+
+function groupBookings(rows: BookingRow[]): BookingGroup[] {
+  const grouped = new Map<string, BookingRow[]>();
+  for (const row of rows) {
+    const key = row.group_code || row.booking_code;
+    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+  }
+  return [...grouped.entries()]
+    .map(([code, items]) => {
+      const first = items[0]!;
+      const unitNumber = first.unit_id === "unidade-1" ? 1 : 2;
+      const status = items.some((row) => row.payment_status === "pending")
+        ? "pending"
+        : items.some((row) => row.payment_status === "paid")
+          ? "paid"
+          : first.payment_status;
+      return {
+        id: first.id,
+        code,
+        date: first.booking_date,
+        name: first.customer_name,
+        phone: first.phone,
+        unitId: first.unit_id,
+        spaceName: `Unidade ${unitNumber} · ${first.space_name}`,
+        method: first.payment_method,
+        status,
+        amountCents: items.reduce((sum, row) => sum + Number(row.amount_cents), 0),
+        slots: items.map((row) => ({ start: row.start_time, end: row.end_time })),
+      };
+    })
+    .sort((a, b) => a.slots[0]!.start.localeCompare(b.slots[0]!.start));
+}
+
+export function CurrentBookingsAdmin() {
+  const fetchCurrentDay = useServerFn(adminCurrentDay);
+  const updateBooking = useServerFn(adminUpdateBooking);
+  const queryClient = useQueryClient();
+  const [date, setDate] = useState(() => arenaNow().date);
+  const [working, setWorking] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ["admin-current-day", date],
+    queryFn: () => fetchCurrentDay({ data: { date } }),
+    retry: false,
+    refetchInterval: 30_000,
+  });
+  const groups = useMemo(
+    () => groupBookings((query.data?.bookings ?? []) as BookingRow[]),
+    [query.data?.bookings],
+  );
+  const pending = groups.filter((booking) => booking.status === "pending").length;
+  const confirmed = groups.filter((booking) => booking.status === "paid").length;
+  const paidAmount = groups
+    .filter((booking) => booking.status === "paid")
+    .reduce((sum, booking) => sum + booking.amountCents, 0);
+
+  async function act(booking: BookingGroup, action: "mark_paid" | "cancel") {
+    const question =
+      action === "mark_paid"
+        ? "Confirmar como paga esta reserva e todos os horários do grupo?"
+        : "Cancelar esta reserva e liberar todos os horários do grupo?";
+    if (!window.confirm(question)) return;
+    setWorking(booking.code);
+    try {
+      const result = await updateBooking({ data: { id: booking.id, action } });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(action === "mark_paid" ? "Reserva confirmada." : "Reserva cancelada.");
+      await queryClient.invalidateQueries({ queryKey: ["admin-current-day"] });
+    } catch {
+      toast.error("Não foi possível atualizar esta reserva.");
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  const dateText = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00Z`));
+
+  return (
+    <section
+      className="mt-8 overflow-hidden rounded-3xl border border-border bg-card/45"
+      aria-labelledby="current-bookings-heading"
+    >
+      <div className="border-b border-border px-5 py-5 sm:px-7">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.15em] text-primary">
+              Operação diária
+            </p>
+            <h2
+              id="current-bookings-heading"
+              className="mt-1 font-display text-3xl font-bold uppercase"
+            >
+              Reservas online
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Reservas das quadras atuais, separadas do arquivo legado.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDate((current) => shiftDate(current, -1))}
+              aria-label="Dia anterior"
+              className="grid h-11 w-11 place-items-center rounded-lg border border-border hover:border-primary"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <input
+              type="date"
+              aria-label="Data das reservas"
+              value={date}
+              onChange={(event) => event.target.value && setDate(event.target.value)}
+              className="h-11 rounded-lg border border-input bg-background px-3 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setDate((current) => shiftDate(current, 1))}
+              aria-label="Próximo dia"
+              className="grid h-11 w-11 place-items-center rounded-lg border border-border hover:border-primary"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setDate(arenaNow().date)}
+              className="min-h-11 rounded-lg border border-border px-3 text-sm font-semibold hover:border-primary"
+            >
+              Hoje
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="p-5 sm:p-7">
+        <p className="mb-4 text-sm font-semibold capitalize text-muted-foreground">{dateText}</p>
+        {query.isLoading ? (
+          <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Carregando reservas…
+          </p>
+        ) : query.isError ? (
+          <p
+            role="alert"
+            className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning"
+          >
+            Não foi possível carregar as reservas atuais. Atualize a página ou tente novamente.
+          </p>
+        ) : (
+          <>
+            <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {[
+                ["Reservas", String(groups.length)],
+                ["Aguardando confirmação", String(pending)],
+                ["Confirmadas", `${confirmed} · ${formatBRL(paidAmount)}`],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-xl border border-border bg-background p-3 sm:p-4"
+                >
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="mt-1 font-display text-xl font-bold sm:text-2xl">{value}</p>
+                </div>
+              ))}
+            </div>
+            {groups.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border px-5 py-8 text-center">
+                <Clock3 className="mx-auto h-6 w-6 text-muted-foreground" />
+                <p className="mt-3 font-semibold">Nenhuma reserva online nesta data</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  As reservas das duas unidades aparecerão aqui depois de concluídas.
+                </p>
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {groups.map((booking) => {
+                  const unit = SITE.units.find((item) => item.id === booking.unitId);
+                  const message = `Olá, ${booking.name.split(" ")[0]}! Sobre sua reserva ${booking.code} na ${unit?.name ?? "Arena Leste"}, ${booking.date.split("-").reverse().join("/")} às ${formatSlotRanges(booking.slots)}.`;
+                  return (
+                    <li
+                      key={booking.code}
+                      className="rounded-2xl border border-border bg-background p-4 sm:p-5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">{booking.name}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {booking.spaceName} · {formatSlotRanges(booking.slots)}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {booking.phone} · {PAYMENT_LABEL[booking.method]} · Código{" "}
+                            {booking.code}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${BADGE[booking.status]}`}
+                        >
+                          {STATUS_LABEL[booking.status]}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                        <strong className="font-display text-xl">
+                          {formatBRL(booking.amountCents)}
+                        </strong>
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={`https://wa.me/55${booking.phone}?text=${encodeURIComponent(message)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:border-primary hover:text-primary"
+                          >
+                            <MessageCircle className="h-4 w-4" /> Contatar
+                          </a>
+                          {booking.status === "pending" && (
+                            <button
+                              type="button"
+                              disabled={working === booking.code}
+                              onClick={() => act(booking, "mark_paid")}
+                              className="inline-flex min-h-10 items-center gap-2 rounded-full bg-success px-4 text-sm font-bold text-success-foreground disabled:opacity-50"
+                            >
+                              {working === booking.code ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="h-4 w-4" />
+                              )}{" "}
+                              Confirmar pagamento
+                            </button>
+                          )}
+                          {(booking.status === "pending" || booking.status === "paid") && (
+                            <button
+                              type="button"
+                              disabled={working === booking.code}
+                              onClick={() => act(booking, "cancel")}
+                              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-destructive/40 px-4 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                            >
+                              <X className="h-4 w-4" /> Cancelar grupo
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}

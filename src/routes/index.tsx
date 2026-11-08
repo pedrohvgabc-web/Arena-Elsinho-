@@ -11,13 +11,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Escolha sua unidade, fale pelo WhatsApp e venha para a areia. Arena Leste Multi Sports em Porto Velho/RO.",
+          "Escolha uma das duas unidades, consulte quadras e horários e agende online na Arena Leste Multi Sports em Porto Velho/RO.",
       },
       { property: "og:title", content: "Arena Leste Multi Sports — Bora pra areia?" },
       {
         property: "og:description",
         content:
-          "Duas unidades em Porto Velho. Escolha onde jogar e fale direto com a Arena Leste.",
+          "Duas unidades e oito quadras de areia em Porto Velho. Escolha onde jogar e faça seu agendamento online.",
       },
       { property: "og:image", content: SITE.socialImage },
       { property: "og:image:alt", content: "Ilustração de vôlei de praia para a Arena Leste" },
@@ -137,6 +137,24 @@ function Home() {
             </a>
           </div>
           <div className="hero-ball-stage relative mx-auto grid min-h-[300px] w-full max-w-[520px] place-items-center sm:min-h-[440px]">
+            <div
+              className="hero-photo-frame absolute inset-3 overflow-hidden rounded-[2rem] border border-white/15 sm:inset-0"
+              aria-label="Imagem ilustrativa de uma partida de vôlei de praia ao entardecer"
+            >
+              <img
+                src="/images/arena-leste-beach-hero.webp"
+                alt="Imagem ilustrativa de uma partida de vôlei de praia ao entardecer"
+                width={1920}
+                height={1080}
+                fetchPriority="high"
+                decoding="async"
+                className="hero-img h-full w-full object-cover"
+              />
+              <div className="hero-photo-shade absolute inset-0" aria-hidden="true" />
+              <span className="hero-photo-label absolute bottom-3 right-3 rounded-full border border-white/20 bg-black/50 px-3 py-1 text-[10px] font-semibold text-white/85 backdrop-blur-sm">
+                Imagem ilustrativa
+              </span>
+            </div>
             <div className="hero-ball-orbit hero-ball-orbit-one" aria-hidden="true" />
             <div className="hero-ball-orbit hero-ball-orbit-two" aria-hidden="true" />
             <VolleyballButton />
@@ -216,8 +234,8 @@ function Home() {
               </h2>
             </div>
             <p className="max-w-md text-muted-foreground">
-              Selecione a unidade para ver o endereço no mapa e abrir a rota. Cada botão de
-              agendamento abre uma conversa própria no WhatsApp.
+              Selecione a unidade para ver o endereço no mapa e abrir a rota. O agendamento é feito
+              nesta página; o WhatsApp fica como canal opcional de atendimento.
             </p>
           </div>
           <UnitMap />

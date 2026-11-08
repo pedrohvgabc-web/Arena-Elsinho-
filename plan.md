@@ -1,31 +1,46 @@
 # Plano — Arena Leste Multi Sports
 
-## Objetivo
-Reformar o site existente para Arena Leste Multi Sports mantendo o endereço gratuito atual, o frontend estático no Render CDN, as server functions Node, o Neon e a senha de admin. A apresentação pública muda para esporte de areia, duas unidades e Torneio Novembro Azul.
+## Objetivo e limites
+Reativar reservas dentro do site para as duas unidades da Arena Leste, com quatro quadras de areia por unidade. Manter a stack TanStack Start/React 19/Vite/Tailwind v4, frontend estático no Render CDN, APIs Node no Render, PostgreSQL Neon, domínio atual e plano gratuito. Preservar a pré-inscrição do Torneio Novembro Azul e o histórico de reservas legado. Não reclassificar os espaços antigos de futebol como quadras atuais, nem copiar seus preços ou horários para a Arena Leste.
 
-## Direção visual
-- Estética de cartaz esportivo editorial: laranja da logo, carvão, areia clara e branco; tipografia Barlow Condensed para impacto e Manrope para leitura.
-- Hero assimétrico com uma bola vetorial interativa que o visitante pode girar, linhas inspiradas em quadra/rede e microinterações suaves.
-- Faixa fina e clicável do campeonato na parte superior, com movimento que respeita `prefers-reduced-motion`.
-- Seções de modalidade, campanha, unidades/mapa e Instagram; layouts mobile-first.
-- A logo enviada é preservada como arte original; o cabeçalho mostra sua placa branca com um WebP recortado das margens, e o favicon continua usando o original.
-- A imagem de praia gerada é uma ilustração temporária para o campeonato, marcada como ilustrativa; não representa o estabelecimento. Substituir quando o proprietário enviar fotos/arte oficiais.
+## Direção de design
+- **Movimento visual:** editorial esportivo de clube de praia ao entardecer, com hierarquia de cartaz e acabamento contemporâneo; não usar aparência genérica de dashboard ou repetição de cards.
+- **Princípios:** prioridade à ação de reservar; fotografia realista e conteúdo específico da Arena; leitura imediata em celular; interface administrativa clara e discreta.
+- **Paleta (6 valores):** carvão azulado `#121820` (base), ardósia `#1C2530` (superfície), areia clara `#F4F1E8` (texto), laranja de assinatura `#F27432` (ação e energia), azul acessível derivado da marca `#218DB9` (orientação e detalhes), cinza-azulado `#A9B5C1` (texto secundário). Manter o verde reconhecível apenas para ações WhatsApp e estados de sucesso.
+- **Layout:** home editorial assimétrica; texto alinhado à esquerda sobre base escura e fotografia de vôlei ao entardecer no hero, com a bola interativa já existente como assinatura visual sem competir com a foto. Mapa e endereços permanecem em suas seções próprias. A rota `/reservar` passa a ser um fluxo sequencial com resumo lateral em desktop e etapas empilhadas em mobile. O admin separa inscrições do torneio, configurações operacionais e arquivo legado.
+- **Elementos de marca:** placa da logo original; linhas de quadra/rede; foto do hero em WebP já disponível e arte promocional do torneio já disponível.
+- **Interação e movimento:** manter exatamente as animações existentes de bola, marquee, ribbon, jelly, pop, reveal e hover, incluindo as regras de movimento reduzido. Não alterar suas definições em `styles.css` nem a lógica de `motion.tsx`. Reutilizar `.animate-pop` e `.btn-jelly` existentes para a transição de estado; novos estados usam feedback imediato e acessível, sem introduzir novas coreografias.
+- **Tipografia:** manter Barlow Condensed nos títulos e Manrope em leitura/formulários. Títulos concisos e equilibrados; corpo confortável, foco visível e alvos de toque com pelo menos 44 px.
+- **Essência da marca:** ponto de encontro de vôlei e esportes de areia em Porto Velho, com duas unidades e reserva feita no próprio site. Personalidade: ativa, acolhedora, direta.
+- **Voz:** convite coloquial e específico, sem promessas não confirmadas. Exemplos: “Escolha sua quadra e marque o próximo jogo.” / “Horários e valores atualizados pela equipe da Arena.”
+- **Logo e cor proprietária:** manter o arquivo original e sua placa clara no cabeçalho; laranja `#F27432` como cor própria, com azul da logo somente como acento secundário.
 
-## Funcionalidade
-- `src/lib/site.ts` é a fonte central para marca, WhatsApp oficial, perfil Instagram, links oficiais e duas unidades.
-- `/reservar` mostra um botão separado por unidade, abre uma conversa pré-preenchida pelo WhatsApp e não promete disponibilidade automática.
-- A seção de unidades permite selecionar Unidade 1 ou 2 e ver um mapa interativo Google Maps por query incorporada, sem chave de Maps API. A busca é aproximada; o mapa e a rota externa também podem ser abertos.
-- Unidade 1: Rua Jequié, 6820, bairro Cuniã, Porto Velho/RO, atrás da Academia de Sena segundo o perfil.
-- Unidade 2: Avenida Pinheiro Machado, 6706, Porto Velho/RO conforme a bio atual informada; posts antigos mencionam 6705/6686, então o site orienta confirmar antes de sair.
-- `/torneio`: quarteto masculino, 28/11/2026 às 15h, local a confirmar, inscrição de R$150/equipe, prêmios R$800/R$400/R$200 com troféu e medalhas. O envio é pré-inscrição, sem pagamento no site; a organização confirma pelo WhatsApp.
-- O formulário registra capitão, telefone, equipe opcional e 3–5 outros atletas (4–6 totais), consentimento e chave de idempotência. Nomes repetidos e dados inválidos são rejeitados.
-- Admin autenticado possui quadro separado de pré-inscrições, com contatos mascarados por padrão e status pendente/confirmada/cancelada. Reservas antigas continuam no banco, recolhidas em um arquivo e identificadas como histórico.
+## Reservas e regras
+- `/reservar` permite selecionar uma unidade, uma das quatro quadras da unidade, data, horários disponíveis, dados do responsável e forma de pagamento já suportada pelo sistema. O começo e a conclusão do fluxo ocorrem no site; o WhatsApp não é um redirecionamento inicial obrigatório.
+- O visitante vê apenas quadras ativas, preço configurado, horários da unidade para aquele dia e conflitos atualizados. Reservas são gravadas no Neon por server function; a constraint de não sobreposição, validação no servidor e idempotência permanecem como proteções finais. A confirmação existente e o Pix demonstrativo continuam sem integração de cobrança real.
+- Cada espaço recebe `unit_id` para separar as quatro quadras da Unidade 1 e as quatro da Unidade 2. Atividade de destaque é vôlei de praia; um campo de observações pode registrar outra atividade de areia solicitada pelo cliente, sem afirmar novas modalidades oficiais.
+- Horários semanais são guardados por unidade e dia da semana, com suporte a unidade fechada e até dois intervalos. A grade real e os preços atuais ainda não foram confirmados; não inventar valores nem reaproveitar a tabela antiga. O painel permite preenchê-los antes de ativar espaços para reserva pública.
+- O painel admin permite editar nome/identificação, preço, duração e ativação por quadra, agrupadas por unidade; também permite ajustar a grade semanal. A administração de reservas atuais por data é separada do arquivo legado. Toda alteração requer a sessão autenticada, passa por validação server-side e gera auditoria em `audit_logs`.
+- A migração aditiva `0003` foi validada em branch temporária e aplicada à Neon de produção após autorização. Ela acrescentou `unit_id`, a grade semanal e oito espaços novos inativos/sem preço; os registros legados e a tabela do torneio foram preservados. Novas reservas públicas só aparecem depois de definir preços e horários válidos.
+
+## Preservação de marca, campanhas e localização
+- `src/lib/site.ts` continua sendo a fonte central da marca, WhatsApp, Instagram, endereços e dados do torneio.
+- Manter os endereços publicados e a observação de que a numeração da Unidade 2 deve ser confirmada pela Arena; mapas incorporados continuam usando Google Maps sem chave de API.
+- Não alterar o formulário existente do Torneio Novembro Azul, sua validação ou tabela Neon; preservar a pré-inscrição, premiação e contato da organização.
 
 ## Segurança e dados
-- Nova tabela PostgreSQL isolada `tournament_registrations`, RLS habilitado, sem leitura pública e acesso só por server functions; migração `0002_tournament_registrations.sql` é incremental e não apaga dados anteriores.
-- Validação Zod no servidor, queries parametrizadas, honeypot, limite 8 envios por chave de rede/hora e 1 por hora por hash do WhatsApp do capitão, idempotência e auditoria sem dados pessoais.
-- Admin reutiliza senha em segredo, sessão HttpOnly/Secure existente e verificação server-side. Cabeçalhos básicos defensivos configurados no Blueprint Render.
-- A página inicial não depende do backend; a SPA permanece no Static Site gratuito e `/api/*` é encaminhado ao Web Service Node existente. Não alterar plano, subdomínio nem segredo de conexão.
+- Reusar sessão admin HttpOnly/Secure, `requireAdmin()`, queries parametrizadas e validação Zod no servidor. Nenhum endpoint público expõe dados pessoais de reservas; disponibilidade retorna somente horários e estado de ocupação.
+- Aplicar controles na criação de reserva: rate limit já existente, telefone validado, chave de idempotência, prazo Pix demonstrativo e confirmação de conflito na transação. Atualização de preço, ativação de quadra e horários requer autenticação e auditoria.
+- Seguir a arquitetura existente: frontend estático independe do backend; `/api/*` continua no Web Service Node; database DSN permanece somente no servidor. Não modificar plano, domínio, segredo ou roteamento atual do Render.
 
-## Próximas dependências
-A publicação do formulário depende de aplicar a migração Neon após teste em branch temporária e aprovação explícita da estrutura. Fotos reais e arte da camisa aguardam envio do usuário. O endereço/pino da Unidade 2 e o local do torneio devem ser confirmados pela Arena.
+## Estrutura relevante do projeto
+- `src/routes/index.tsx`: home, hero, torneio, unidades e mapa.
+- `src/routes/reservar.tsx`: fluxo público de reserva por unidade, quadra, data, horário e contato.
+- `src/routes/admin.tsx`, `src/components/CurrentBookingsAdmin.tsx`, `src/components/ArenaSettingsAdmin.tsx` e `src/components/TournamentRegistrationsAdmin.tsx`: autenticação, reservas atuais, configuração de quadras/horários e inscrições; manter o arquivo legado separado.
+- `src/lib/arena.functions.ts`: server functions públicas/admin, disponibilidade e gravação de reserva.
+- `src/lib/arena-rules.ts`: fuso, cálculo de slots, validações e formatos compartilhados.
+- `src/lib/site.ts`: identidade, endereços, contatos e conteúdo da campanha.
+- `drizzle/migrations/`: migração incremental das unidades e horários.
+- `src/styles.css`: tokens de aparência e animações existentes; ajustar tokens e estilos de layout, sem alterar keyframes ou coreografia existente.
+- `public/images/`: logo, hero WebP e imagem do torneio já disponíveis.
+- `vite.config.ts` e `vite.static.config.ts`: builds atuais do runtime Node e do Static Site do Render.

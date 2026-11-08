@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ExternalLink, MapPin } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { SITE, mapEmbedLink, mapSearchLink, type ArenaUnit } from "@/lib/site";
 
 export function UnitMap() {
@@ -11,26 +12,37 @@ export function UnitMap() {
         {SITE.units.map((unit, index) => {
           const active = selected.id === unit.id;
           return (
-            <button
+            <article
               key={unit.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setSelected(unit)}
-              className={`rounded-2xl border p-5 text-left transition-all ${active ? "border-primary bg-primary/10 shadow-glow" : "border-border bg-card hover:border-primary/50"}`}
+              className={`rounded-2xl border p-4 transition-colors sm:p-5 ${active ? "border-primary bg-primary/10 shadow-glow" : "border-border bg-card"}`}
             >
-              <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
-                <MapPin className="h-4 w-4" /> Unidade {index + 1}
-              </span>
-              <span className="mt-2 block font-display text-2xl font-bold uppercase text-foreground">
-                {unit.name}
-              </span>
-              <span className="mt-2 block text-sm leading-relaxed text-muted-foreground">
-                {unit.address}
-              </span>
-              <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
-                {unit.note}
-              </span>
-            </button>
+              <button
+                type="button"
+                aria-pressed={active}
+                onClick={() => setSelected(unit)}
+                className="block min-h-11 w-full text-left focus-visible:outline-none"
+              >
+                <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+                  <MapPin className="h-4 w-4" /> Unidade {index + 1}
+                </span>
+                <span className="mt-2 block font-display text-2xl font-bold uppercase text-foreground">
+                  {unit.name}
+                </span>
+                <span className="mt-2 block text-sm leading-relaxed text-muted-foreground">
+                  {unit.address}
+                </span>
+                <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
+                  {unit.note}
+                </span>
+              </button>
+              <Link
+                to="/reservar"
+                search={{ unit: unit.id }}
+                className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Agendar na Unidade {index + 1}
+              </Link>
+            </article>
           );
         })}
         <a

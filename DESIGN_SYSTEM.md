@@ -1,5 +1,20 @@
 # Design system — Arena Leste
 
-Tokens em `src/styles.css` usam OKLCH: fundo carvão, primária laranja inspirada na logo, superfícies quentes, texto claro, warning âmbar, erro vermelho e sucesso verde. O botão WhatsApp permanece verde para preservar o sinal visual reconhecível do canal. Barlow Condensed dá impacto aos títulos; Manrope prioriza leitura em textos e formulários.
+## Direção visual
+Estética editorial esportiva de clube de praia ao entardecer. O hero usa a foto leve de vôlei já presente no projeto, hierarquia assimétrica e a bola interativa existente como assinatura. O restante da interface mantém fundos contidos, boa leitura e menos cartões repetidos.
 
-O layout é mobile-first, usa alvos de toque de pelo menos 44px, contraste forte e `:focus-visible`. A bola de vôlei tem giro acionável por botão; a faixa superior e o ticker param ao receber hover. `prefers-reduced-motion` desativa animações e transições. Mapas e Reel oficial abrem de forma leve, sem carregar vídeo de terceiro no hero.
+## Tokens de cor
+
+- Fundo carvão azulado: `#121820`
+- Superfície ardósia: `#1C2530`
+- Texto/areia clara: `#F4F1E8`
+- Laranja proprietário: `#F27432`
+- Azul secundário acessível derivado da identidade: `#218DB9`
+- Texto secundário: `#A9B5C1`
+- Verde fica restrito ao sinal visual do WhatsApp e estados de sucesso.
+
+## Tipografia e composição
+Manter Barlow Condensed em títulos e Manrope em leitura, botões e formulários. A hierarquia deve ser compacta, de alto contraste e responsiva, com conteúdo alinhado à esquerda no hero, texto curto e alvos de toque de pelo menos 44 px. O fluxo de reserva usa etapas claras no celular e resumo fixo apenas em desktop.
+
+## Movimento e acessibilidade
+Preservar todas as animações e transições já implementadas: bola giratória acionada pelo usuário, ribbon e ticker em marquee, reveal, jelly, pop e hover existentes. Não mudar seus keyframes nem a lógica de `motion.tsx`; respeitar `prefers-reduced-motion`, foco visível, contraste e navegação por teclado. Usar carregamento prioritário apenas para a imagem do hero e lazy loading para imagens abaixo da dobra.
