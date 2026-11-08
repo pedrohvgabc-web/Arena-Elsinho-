@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { validateSlot, normalizePhone, slotsFor, arenaNow, totalCents, MAX_SLOTS } from "./arena-rules";
+import { tournamentRegistrationSchema } from "./tournament-schema";
 
 type SpaceRow = { id: string; name: string; sport: string; capacity: number; slot_minutes: number; price_cents: number; active: boolean };
 type AvailabilityRow = { start_time: string; payment_status: string };
@@ -292,6 +293,73 @@ export const submitPrivacyRequest = createServerFn({ method: "POST" })
     return { ok: true, error: null };
   });
 
+/* ---------------- Pré-inscrição pública do torneio ---------------- */
+
+export const registerTournamentTeam = createServerFn({ method: "POST" })
+  .inputValidator(tournamentRegistrationSchema)
+  .handler(async ({ data }) => {
+    const phone = normalizePhone(data.phone);
+    if (!phone) return { ok: false as const, error: "WhatsApp inválido. Informe DDD e número." };
+
+    // Honeypot: responde com sucesso sem gravar dados para não informar ao bot que foi detectado.
+    if (data.website.trim()) return { ok: true as const, code: `AL26-${randomCode(8)}` };
+
+    const db = await database();
+    const existing = (await db`
+      SELECT registration_code FROM public.tournament_registrations
+      WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
+    `) as unknown as Array<{ registration_code: string }>;
+    if (existing[0]) return { ok: true as const, code: String(existing[0].registration_code) };
+
+    const phoneFingerprint = await sha256(`${process.env["DATABASE_URL"] ?? ""}:${phone}`);
+    if (!(await rateLimit(`tournament-phone:${phoneFingerprint}`, 1, 3600))) {
+      return { ok: false as const, error: "Este WhatsApp já tem uma pré-inscrição recente. Aguarde uma hora ou fale com a Arena." };
+    }
+    if (!(await rateLimit(`tournament:${await clientKey()}`, 8, 3600))) {
+      return { ok: false as const, error: "Muitas tentativas. Aguarde e fale com a Arena pelo WhatsApp." };
+    }
+
+    const code = `AL26-${randomCode(8)}`;
+    const teamName = data.teamName.replace(/[<>]/g, "").trim();
+    try {
+      const saved = await db.begin(async (tx) => {
+        const previous = (await tx`
+          SELECT registration_code FROM public.tournament_registrations
+          WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
+        `) as unknown as Array<{ registration_code: string }>;
+        if (previous[0]) return { code: String(previous[0].registration_code), id: null as string | null };
+
+        const rows = (await tx`
+          INSERT INTO public.tournament_registrations (
+            registration_code, submission_key, captain_name, captain_phone, team_name, athletes
+          ) VALUES (
+            ${code}, ${data.submissionId}::uuid, ${data.captainName}, ${phone}, ${teamName}, ${JSON.stringify(data.athletes)}::jsonb
+          ) RETURNING id, registration_code
+        `) as unknown as Array<{ id: string; registration_code: string }>;
+        const row = rows[0];
+        if (!row) throw new Error("REGISTRATION_INSERT_FAILED");
+
+        // Auditoria sem nomes, telefone, lista de atletas ou outros dados pessoais.
+        await tx`
+          INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+          VALUES ('public', 'tournament.registration.create', 'tournament_registration', ${row.id}, ${JSON.stringify({ code: row.registration_code, event: "novembro-azul-2026" })}::jsonb)
+        `;
+        return { code: String(row.registration_code), id: String(row.id) };
+      });
+      return { ok: true as const, code: saved.code };
+    } catch (error) {
+      if (errorCode(error) === "23505") {
+        const retry = (await db`
+          SELECT registration_code FROM public.tournament_registrations
+          WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
+        `) as unknown as Array<{ registration_code: string }>;
+        if (retry[0]) return { ok: true as const, code: String(retry[0].registration_code) };
+      }
+      console.error("tournament registration failed", errorCode(error));
+      return { ok: false as const, error: "Não foi possível registrar agora. Tente novamente ou fale com a Arena." };
+    }
+  });
+
 /* ---------------- Admin ---------------- */
 
 const COOKIE = "ae_admin";
@@ -310,6 +378,55 @@ async function requireAdmin() {
   if (!rows[0]) throw new Error("UNAUTHORIZED");
   return rows[0].id;
 }
+
+export const adminTournamentRegistrations = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const db = await database();
+  const rows = (await db`
+    SELECT id::text AS id, registration_code, captain_name, captain_phone, team_name,
+      athletes, status, created_at::text AS created_at
+    FROM public.tournament_registrations
+    ORDER BY created_at DESC
+    LIMIT 300
+  `) as unknown as Array<{
+    id: string; registration_code: string; captain_name: string; captain_phone: string;
+    team_name: string; athletes: unknown; status: string; created_at: string;
+  }>;
+  return rows.map((row) => ({
+    ...row,
+    athletes: Array.isArray(row.athletes) ? row.athletes.filter((name): name is string => typeof name === "string") : [],
+    status: row.status as "pending" | "confirmed" | "cancelled",
+  }));
+});
+
+export const adminSetTournamentRegistrationStatus = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    id: z.string().uuid(),
+    status: z.enum(["pending", "confirmed", "cancelled"]),
+  }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    return db.begin(async (tx) => {
+      const rows = (await tx`
+        SELECT status FROM public.tournament_registrations
+        WHERE id = ${data.id}::uuid FOR UPDATE
+      `) as unknown as Array<{ status: string }>;
+      if (!rows[0]) return { ok: false as const, error: "Inscrição não encontrada." };
+      if (rows[0].status === data.status) return { ok: true as const, error: null };
+
+      await tx`
+        UPDATE public.tournament_registrations
+        SET status = ${data.status}, updated_at = now()
+        WHERE id = ${data.id}::uuid
+      `;
+      await tx`
+        INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+        VALUES ('admin', 'tournament.registration.status', 'tournament_registration', ${data.id}::uuid, ${JSON.stringify({ status: data.status })}::jsonb)
+      `;
+      return { ok: true as const, error: null };
+    });
+  });
 
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator(z.object({ password: z.string().min(1).max(200) }))

@@ -7,6 +7,19 @@ services:
     branch: main
     buildCommand: pnpm install --frozen-lockfile && pnpm run build:static
     staticPublishPath: dist/client
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: Permissions-Policy
+        value: 'camera=(), microphone=(), geolocation=(self "https://www.google.com" "https://maps.google.com")'
     routes:
       # Manter funções TanStack e rotas de servidor no backend, incluindo webhooks.
       - type: rewrite

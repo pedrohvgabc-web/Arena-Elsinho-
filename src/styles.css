@@ -42,31 +42,31 @@
 
 :root {
   --radius: 0.875rem;
-  --background: oklch(0.16 0.03 260);
-  --foreground: oklch(0.98 0.005 250);
-  --card: oklch(0.21 0.035 260);
-  --card-foreground: oklch(0.98 0.005 250);
-  --popover: oklch(0.21 0.035 260);
-  --popover-foreground: oklch(0.98 0.005 250);
-  --primary: oklch(0.9 0.21 125);
-  --primary-foreground: oklch(0.18 0.04 260);
-  --secondary: oklch(0.26 0.04 260);
-  --secondary-foreground: oklch(0.98 0.005 250);
-  --muted: oklch(0.24 0.035 260);
-  --muted-foreground: oklch(0.74 0.03 250);
-  --accent: oklch(0.28 0.05 260);
-  --accent-foreground: oklch(0.98 0.005 250);
+  --background: oklch(0.15 0.018 45);
+  --foreground: oklch(0.97 0.008 75);
+  --card: oklch(0.205 0.022 45);
+  --card-foreground: oklch(0.97 0.008 75);
+  --popover: oklch(0.205 0.022 45);
+  --popover-foreground: oklch(0.97 0.008 75);
+  --primary: oklch(0.72 0.19 43);
+  --primary-foreground: oklch(0.16 0.02 40);
+  --secondary: oklch(0.27 0.025 45);
+  --secondary-foreground: oklch(0.97 0.008 75);
+  --muted: oklch(0.245 0.02 45);
+  --muted-foreground: oklch(0.75 0.018 65);
+  --accent: oklch(0.29 0.035 43);
+  --accent-foreground: oklch(0.97 0.008 75);
   --destructive: oklch(0.68 0.17 22);
   --destructive-foreground: oklch(0.98 0 0);
   --warning: oklch(0.8 0.15 75);
-  --warning-foreground: oklch(0.2 0.04 260);
+  --warning-foreground: oklch(0.2 0.03 45);
   --success: oklch(0.76 0.16 155);
-  --success-foreground: oklch(0.18 0.04 260);
-  --border: oklch(0.32 0.04 260);
-  --input: oklch(0.34 0.04 260);
-  --ring: oklch(0.9 0.21 125);
-  --gradient-hero: linear-gradient(180deg, oklch(0.16 0.03 260 / 0.2) 0%, oklch(0.16 0.03 260 / 0.85) 70%, oklch(0.16 0.03 260) 100%);
-  --shadow-glow: 0 10px 40px -10px oklch(0.9 0.21 125 / 0.45);
+  --success-foreground: oklch(0.18 0.04 155);
+  --border: oklch(0.33 0.025 45);
+  --input: oklch(0.36 0.025 45);
+  --ring: oklch(0.72 0.19 43);
+  --gradient-hero: linear-gradient(180deg, oklch(0.15 0.018 45 / 0.2) 0%, oklch(0.15 0.018 45 / 0.85) 70%, oklch(0.15 0.018 45) 100%);
+  --shadow-glow: 0 10px 40px -10px oklch(0.72 0.19 43 / 0.42);
   --whatsapp: oklch(0.767 0.2 150);
   --whatsapp-foreground: oklch(0.99 0 0);
 }
@@ -234,7 +234,7 @@
 .spotlight {
   background: radial-gradient(
     560px circle at var(--mx, 50%) var(--my, 35%),
-    oklch(0.9 0.21 125 / 0.13),
+    oklch(0.72 0.19 43 / 0.15),
     transparent 70%
   );
 }
@@ -263,10 +263,62 @@
   pointer-events: none;
 }
 
+/* Arena Leste: compact tournament callout and beach-volleyball signature. */
+.event-ribbon {
+  display: flex;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.75rem;
+  overflow: hidden;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  padding-inline: max(1rem, calc((100vw - 80rem) / 2));
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.event-ribbon-date { flex: none; white-space: nowrap; }
+.event-ribbon-window { min-width: 0; flex: 1; overflow: hidden; }
+.event-ribbon-track { display: flex; width: max-content; animation: event-ribbon-marquee 28s linear infinite; }
+.event-ribbon-copy { display: flex; flex: none; align-items: center; gap: 1.25rem; padding-inline: 1.2rem; white-space: nowrap; }
+.event-ribbon-star { font-size: 1rem; }
+.event-ribbon-action { display: inline-flex; flex: none; align-items: center; gap: 0.35rem; white-space: nowrap; }
+.event-ribbon:hover .event-ribbon-track { animation-play-state: paused; }
+@keyframes event-ribbon-marquee { to { transform: translateX(-50%); } }
+
+.home-hero { background: #17130f; }
+.hero-court-lines {
+  opacity: 0.2;
+  background-image: linear-gradient(90deg, transparent 49.7%, #f5eee0 49.9%, #f5eee0 50.1%, transparent 50.3%), linear-gradient(0deg, transparent 49.7%, #f5eee0 49.9%, #f5eee0 50.1%, transparent 50.3%);
+  background-size: 150px 150px;
+  mask-image: linear-gradient(90deg, black, transparent 85%);
+}
+.hero-glow { background: radial-gradient(ellipse at 78% 52%, oklch(0.45 0.13 43 / 0.27), transparent 42%); }
+.hero-ball-stage { isolation: isolate; }
+.hero-ball-orbit { position: absolute; width: 76%; aspect-ratio: 1; border: 1px solid oklch(0.72 0.19 43 / 0.35); border-radius: 50%; }
+.hero-ball-orbit-one { transform: rotate(-28deg) scaleY(0.54); }
+.hero-ball-orbit-two { transform: rotate(38deg) scaleY(0.73); border-color: oklch(0.97 0.008 75 / 0.16); }
+.hero-ball-button { position: relative; z-index: 1; display: grid; width: min(78vw, 23rem); aspect-ratio: 1; place-items: center; border: 0; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hero-volleyball { width: 82%; overflow: visible; filter: drop-shadow(0 24px 30px rgb(0 0 0 / 0.34)); animation: hero-ball-float 5s ease-in-out infinite; transition: filter 250ms ease, transform 350ms var(--ease-spring); transform-origin: center; }
+.hero-ball-button:hover .hero-volleyball, .hero-ball-button:focus-visible .hero-volleyball { filter: drop-shadow(0 28px 34px rgb(0 0 0 / 0.4)) drop-shadow(0 0 24px oklch(0.72 0.19 43 / 0.3)); transform: rotate(12deg) scale(1.035); }
+.hero-ball-button[data-spinning="true"] .hero-volleyball { animation: hero-ball-spin 0.9s linear infinite; }
+.hero-ball-caption { position: absolute; bottom: 2%; left: 50%; transform: translateX(-50%); color: oklch(0.78 0.018 65); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
+.hero-corner-label { position: absolute; right: 0; top: 8%; color: oklch(0.97 0.008 75 / 0.52); font-family: var(--font-display); font-size: 0.75rem; font-weight: 700; line-height: 1.1; letter-spacing: 0.2em; text-align: right; }
+@keyframes hero-ball-float { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-12px) rotate(5deg); } }
+@keyframes hero-ball-spin { to { transform: rotate(720deg); } }
+
+.sport-ticker { background: oklch(0.19 0.021 45); }
+.sport-ticker-track { display: flex; width: max-content; padding-block: 1rem; animation: sport-ticker-marquee 32s linear infinite; }
+.sport-ticker:hover .sport-ticker-track { animation-play-state: paused; }
+@keyframes sport-ticker-marquee { to { transform: translateX(-50%); } }
+
 @media (prefers-reduced-motion: reduce) {
   [data-reveal] { opacity: 1; transform: none; filter: none; transition: none; }
   .marquee-track, .hero-img { animation: none; }
   .magnetic, .tilt { transition: none; }
   .wa-float { transition: none; }
   .wa-halo { animation: none; }
+  .event-ribbon-track, .sport-ticker-track { animation: none; }
+  .hero-volleyball { animation: none; }
 }

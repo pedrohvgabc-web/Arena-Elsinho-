@@ -1,11 +1,11 @@
-// Pure business rules for Arena Elsinho. Shared by server (authoritative) and UI (display only).
+// Legacy booking business rules. New Arena Leste bookings are initiated by WhatsApp.
 export const ARENA_TZ = "America/Cuiaba";
 export const SLOT_MINUTES = 60;
 
 export type PaymentMethod = "pix" | "card_onsite" | "cash_onsite";
 export type PaymentStatus = "pending" | "paid" | "cancelled" | "expired" | "failed";
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
-  pix: "Pix online",
+  pix: "Pix demonstrativo",
   card_onsite: "Cartão no local",
   cash_onsite: "Dinheiro no local",
 };
@@ -53,11 +53,19 @@ export function slotsFor(dateISO: string): Array<{ start: string; end: string }>
 /** Current date and minutes in the arena timezone. */
 export function arenaNow(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: ARENA_TZ, year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
+    timeZone: ARENA_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   }).formatToParts(now);
   const g = (t: string) => parts.find((p) => p.type === t)!.value;
-  return { date: `${g("year")}-${g("month")}-${g("day")}`, minutes: (Number(g("hour")) % 24) * 60 + Number(g("minute")) };
+  return {
+    date: `${g("year")}-${g("month")}-${g("day")}`,
+    minutes: (Number(g("hour")) % 24) * 60 + Number(g("minute")),
+  };
 }
 
 export function normalizePhone(raw: string) {
@@ -68,13 +76,15 @@ export function normalizePhone(raw: string) {
 export type SlotCheck = { ok: true; end: string } | { ok: false; reason: string };
 
 export function validateSlot(dateISO: string, start: string, now = new Date()): SlotCheck {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO) || !/^\d{2}:\d{2}$/.test(start)) return { ok: false, reason: "Data ou horário inválido." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO) || !/^\d{2}:\d{2}$/.test(start))
+    return { ok: false, reason: "Data ou horário inválido." };
   if (weekdayOf(dateISO) === 0) return { ok: false, reason: "A arena não abre aos domingos." };
   const n = arenaNow(now);
   if (dateISO < n.date) return { ok: false, reason: "Não é possível reservar datas passadas." };
   const slot = slotsFor(dateISO).find((s) => s.start === start);
   if (!slot) return { ok: false, reason: "Horário fora do expediente." };
-  if (dateISO === n.date && toMin(start) <= n.minutes) return { ok: false, reason: "Esse horário já passou." };
+  if (dateISO === n.date && toMin(start) <= n.minutes)
+    return { ok: false, reason: "Esse horário já passou." };
   return { ok: true, end: slot.end };
 }
 
@@ -101,6 +111,9 @@ export function groupRanges(starts: string[], slotMinutes = SLOT_MINUTES): Array
 
 /** "19:00 – 21:00 · 22:00" for display. */
 export const formatRanges = (starts: string[]) =>
-  groupRanges(starts).map(([a, b]) => (a === b ? a : `${a} – ${b}`)).join(" · ");
+  groupRanges(starts)
+    .map(([a, b]) => (a === b ? a : `${a} – ${b}`))
+    .join(" · ");
 
-export const maskPhone = (p: string) => (p.length >= 10 ? `(${p.slice(0, 2)}) •••••-${p.slice(-4)}` : "•••");
+export const maskPhone = (p: string) =>
+  p.length >= 10 ? `(${p.slice(0, 2)}) •••••-${p.slice(-4)}` : "•••";

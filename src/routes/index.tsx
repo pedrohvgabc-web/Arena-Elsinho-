@@ -1,116 +1,86 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  Users,
-  Timer,
-  Lightbulb,
-  ShowerHead,
-  Coffee,
-  Heart,
-  Play,
-  Trophy,
-  Target,
-  Handshake,
-  ArrowRight,
-} from "lucide-react";
-import hero from "@/assets/hero.webp";
-import heroVideo from "@/assets/hero-video.mp4.asset.json";
-import escolinha from "@/assets/escolinha.webp.asset.json";
-import { getSpaces } from "@/lib/arena.functions";
-import { SPACE_IMAGES } from "@/lib/space-images";
-import { arenaNow, openingWindows, weekdayOf, formatBRL } from "@/lib/arena-rules";
-import { SITE, waLink } from "@/lib/site";
-import { Reveal, Magnetic, Tilt } from "@/components/motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowRight, Instagram, MapPin, Trophy } from "lucide-react";
+import { useState } from "react";
+import { UnitMap } from "@/components/UnitMap";
+import { SITE, TOURNAMENT } from "@/lib/site";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Arena Elsinho — Futebol society, vôlei de areia e escolinha" },
+      { title: "Arena Leste Multi Sports — Vôlei de praia em Porto Velho" },
       {
         name: "description",
         content:
-          "Reserve online campos de futebol society e quadra de vôlei de areia. Escolinha Elsinho com matrículas abertas para 5 a 17 anos.",
+          "Escolha sua unidade, fale pelo WhatsApp e venha para a areia. Arena Leste Multi Sports em Porto Velho/RO.",
       },
-      { property: "og:title", content: "Arena Elsinho — Seu jogo. Seu espaço." },
-      { property: "og:description", content: "Reserve seu horário online em poucos cliques." },
+      { property: "og:title", content: "Arena Leste Multi Sports — Bora pra areia?" },
+      {
+        property: "og:description",
+        content:
+          "Duas unidades em Porto Velho. Escolha onde jogar e fale direto com a Arena Leste.",
+      },
+      { property: "og:image", content: SITE.socialImage },
+      { property: "og:image:alt", content: "Ilustração de vôlei de praia para a Arena Leste" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: SITE.socialImage },
     ],
   }),
-  component: Index,
+  component: Home,
 });
 
-function OpenStatus() {
-  const [label, setLabel] = useState<string | null>(null);
-  useEffect(() => {
-    const n = arenaNow();
-    const open = openingWindows(weekdayOf(n.date)).some(
-      ([a, b]) => n.minutes >= a && n.minutes < b,
-    );
-    setLabel(open ? "Aberto agora" : "Fechado agora");
-  }, []);
-  if (!label) return null;
-  const open = label === "Aberto agora";
+function VolleyballButton() {
+  const [spinning, setSpinning] = useState(false);
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1 text-sm backdrop-blur">
-      <span
-        className={`h-2 w-2 rounded-full ${open ? "bg-success animate-pulse" : "bg-warning"}`}
-        aria-hidden
-      />
-      {label}
-    </span>
+    <button
+      type="button"
+      className="hero-ball-button"
+      data-spinning={spinning}
+      onClick={() => setSpinning((value) => !value)}
+      aria-label={spinning ? "Parar o giro da bola de vôlei" : "Fazer a bola de vôlei girar"}
+      aria-pressed={spinning}
+      title="Clique para girar a bola"
+    >
+      <svg
+        viewBox="0 0 320 320"
+        className="hero-volleyball"
+        role="img"
+        aria-label="Bola de vôlei laranja e branca"
+      >
+        <circle cx="160" cy="160" r="145" fill="#f6f2e8" />
+        <g fill="none" stroke="#e65a16" strokeWidth="13" strokeLinecap="round">
+          <path d="M160 17c-77 28-111 86-99 151 10 55 49 103 99 135" />
+          <path d="M160 17c77 28 111 86 99 151-10 55-49 103-99 135" />
+          <path d="M25 112c45-30 90-39 136-26 51 14 91 46 125 96" />
+          <path d="M31 213c46-25 94-30 140-16 41 12 77 37 107 74" />
+        </g>
+        <circle cx="160" cy="160" r="145" fill="none" stroke="#fff8e8" strokeWidth="4" />
+      </svg>
+      <span className="hero-ball-caption">Toque para girar</span>
+    </button>
   );
 }
 
-/** Hero spotlight follows the cursor; image drifts with scroll (parallax). */
-function useHeroFx() {
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !window.matchMedia("(pointer: fine)").matches) return;
-    const move = (e: MouseEvent) => {
-      const r = el.getBoundingClientRect();
-      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
-      el.style.setProperty("--my", `${e.clientY - r.top}px`);
-    };
-    let raf = 0;
-    const scroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => el.style.setProperty("--py", `${window.scrollY * 0.22}px`));
-    };
-    el.addEventListener("mousemove", move);
-    window.addEventListener("scroll", scroll, { passive: true });
-    return () => {
-      el.removeEventListener("mousemove", move);
-      window.removeEventListener("scroll", scroll);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-  return ref;
-}
-
-const TICKER = [
-  "Futebol society",
-  "Vôlei de areia",
-  "Escolinha Elsinho",
-  "Reserve online",
-  "Seu jogo. Seu espaço.",
-];
-
-function Ticker() {
-  const items = [...TICKER, ...TICKER];
+function SportTicker() {
+  const words = ["Areia", "Vôlei", "Esporte", "Encontro", "Porto Velho"];
   return (
-    <div className="marquee overflow-hidden border-y border-border bg-card/60 py-4" aria-hidden>
-      <div className="marquee-track">
-        {[0, 1].map((half) => (
-          <div key={half} className="flex shrink-0 items-center">
-            {items.map((t, i) => (
+    <div
+      className="sport-ticker overflow-hidden border-y border-border/70"
+      aria-label="Esporte, areia e convivência"
+    >
+      <div className="sport-ticker-track" aria-hidden="true">
+        {[0, 1].map((copy) => (
+          <div className="flex shrink-0 items-center" key={copy}>
+            {words.map((word, index) => (
               <span
-                key={`${half}-${i}`}
-                className="flex items-center font-display text-xl font-bold uppercase tracking-wider text-muted-foreground"
+                className="flex items-center font-display text-xl font-bold uppercase tracking-[0.12em] sm:text-2xl"
+                key={`${copy}-${word}`}
               >
-                <span className="px-6">{t}</span>
-                <span className="text-primary">✦</span>
+                <span className="px-5 sm:px-8">{word}</span>
+                <span className="text-primary" aria-hidden="true">
+                  ✳
+                </span>
+                {index === words.length - 1 && <span className="sr-only">.</span>}
               </span>
             ))}
           </div>
@@ -120,328 +90,191 @@ function Ticker() {
   );
 }
 
-function Index() {
-  const [spaces, setSpaces] = useState<Awaited<ReturnType<typeof getSpaces>>>([]);
-  const [spacesLoading, setSpacesLoading] = useState(true);
-  const [spacesError, setSpacesError] = useState(false);
-  const loadSpaces = useCallback(() => {
-    setSpacesLoading(true);
-    setSpacesError(false);
-    void getSpaces()
-      .then(setSpaces)
-      .catch(() => setSpacesError(true))
-      .finally(() => setSpacesLoading(false));
-  }, []);
-  useEffect(() => {
-    loadSpaces();
-  }, [loadSpaces]);
-  const heroRef = useHeroFx();
-  const [heroVideoReady, setHeroVideoReady] = useState(false);
-  const [heroVideoVisible, setHeroVideoVisible] = useState(false);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const connection = (
-      navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
-    ).connection;
-    if (
-      connection?.saveData ||
-      connection?.effectiveType === "2g" ||
-      connection?.effectiveType === "slow-2g"
-    )
-      return;
-    const timer = window.setTimeout(() => setHeroVideoReady(true), 1800);
-    return () => window.clearTimeout(timer);
-  }, []);
+function Home() {
   return (
     <>
-      <section ref={heroRef} className="relative isolate min-h-[88vh] overflow-hidden">
-        <img
-          src={hero}
-          alt="Campo de futebol society iluminado à noite"
-          width={1920}
-          height={1088}
-          fetchPriority="high"
-          decoding="async"
-          className="hero-img absolute inset-0 -z-20 h-full w-full object-cover"
-          style={{ translate: "0 var(--py, 0px)" }}
+      <section className="home-hero relative isolate overflow-hidden">
+        <div
+          className="hero-court-lines pointer-events-none absolute inset-0 -z-10"
+          aria-hidden="true"
         />
-        {heroVideoReady && (
-          <video
-            src={heroVideo.url}
-            poster={hero}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="none"
-            aria-hidden="true"
-            onPlaying={() => setHeroVideoVisible(true)}
-            className={`absolute inset-0 -z-20 h-full w-full object-cover transition-opacity duration-1000 ease-in-out ${heroVideoVisible ? "opacity-100" : "opacity-0"} motion-reduce:hidden`}
-          />
-        )}
-        <div className="absolute inset-0 -z-10 bg-hero-fade" />
-        <div className="spotlight pointer-events-none absolute inset-0 -z-10" aria-hidden />
-        <div className="mx-auto flex min-h-[88vh] max-w-7xl flex-col justify-end px-4 pb-20 sm:px-6">
-          <Reveal>
-            <div>
-              <OpenStatus />
-            </div>
-          </Reveal>
-          <Reveal delay={100}>
-            <h1 className="mt-6 max-w-4xl text-6xl font-extrabold uppercase leading-[0.9] sm:text-8xl lg:text-9xl">
-              Seu jogo.
+        <div className="hero-glow pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
+        <div className="mx-auto grid min-h-[min(760px,82svh)] max-w-7xl items-center gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:py-20">
+          <div className="relative z-10 max-w-3xl">
+            <p className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-primary sm:text-sm">
+              <MapPin className="h-4 w-4" /> Porto Velho, Rondônia
+            </p>
+            <h1 className="mt-7 max-w-3xl font-display text-6xl font-extrabold uppercase leading-[0.82] tracking-tight sm:text-8xl lg:text-[7.4rem]">
+              O jogo
               <br />
-              <span className="text-primary">Seu espaço.</span>
+              começa na
+              <br />
+              <span className="text-primary">areia.</span>
             </h1>
-          </Reveal>
-          <Reveal delay={220}>
-            <p className="mt-6 max-w-xl text-lg text-muted-foreground sm:text-xl">
-              A arena que transforma cada partida em memória.
+            <p className="mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+              Reúna seu time, escolha sua unidade e venha viver o esporte do seu jeito. A Arena
+              Leste é o ponto de encontro para quem ama jogar.
             </p>
-          </Reveal>
-          <Reveal delay={340}>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Magnetic>
-                <Link
-                  to="/reservar"
-                  className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
-                >
-                  Reservar agora <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Magnetic>
-              <Magnetic strength={0.25}>
-                <a
-                  href="#arena"
-                  className="inline-flex min-h-12 items-center rounded-full border border-border bg-card/50 px-7 font-semibold backdrop-blur transition-colors hover:bg-card"
-                >
-                  Conheça a arena
-                </a>
-              </Magnetic>
+              <Link
+                to="/reservar"
+                className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
+              >
+                Escolher unidade <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/torneio"
+                className="inline-flex min-h-12 items-center gap-2 rounded-full border border-border bg-card/70 px-6 font-semibold backdrop-blur transition-colors hover:border-primary/50 hover:text-primary"
+              >
+                Novembro Azul <Trophy className="h-4 w-4" />
+              </Link>
             </div>
-          </Reveal>
-        </div>
-      </section>
-
-      <Ticker />
-
-      <section id="espacos" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6">
-        <Reveal>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Espaços</p>
-          <h2 className="mt-2 text-5xl font-bold uppercase sm:text-6xl">Escolha onde jogar</h2>
-        </Reveal>
-        <div className="mt-12 grid gap-6 md:grid-cols-3" aria-busy={spacesLoading}>
-          {spacesLoading ? (
-            [0, 1, 2].map((i) => (
-              <article
-                key={i}
-                aria-hidden="true"
-                className="overflow-hidden rounded-2xl border border-border bg-card"
-              >
-                <div className="aspect-video animate-pulse bg-muted/50" />
-                <div className="space-y-4 p-6">
-                  <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-                  <div className="h-6 w-4/5 animate-pulse rounded bg-muted" />
-                  <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-                </div>
-              </article>
-            ))
-          ) : spacesError ? (
-            <div className="rounded-2xl border border-border bg-card p-6 text-center md:col-span-3">
-              <p className="text-muted-foreground">
-                Não foi possível carregar os espaços neste momento.
-              </p>
-              <button
-                type="button"
-                onClick={loadSpaces}
-                className="btn-jelly mt-4 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground"
-              >
-                Tentar novamente
-              </button>
-            </div>
-          ) : spaces.length === 0 ? (
-            <p className="text-muted-foreground md:col-span-3">
-              Nenhum espaço disponível no momento.
-            </p>
-          ) : (
-            spaces.map((s, i) => (
-              <Reveal key={s.id} delay={i * 120}>
-                <Tilt max={7} className="h-full rounded-2xl">
-                  <article className="group h-full overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-primary/60">
-                    <div className="aspect-video overflow-hidden">
-                      <img
-                        src={SPACE_IMAGES[s.id]}
-                        alt={s.name}
-                        loading="lazy"
-                        decoding="async"
-                        width={1366}
-                        height={768}
-                        className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-                      />
-                    </div>
-                    <div className="p-6">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          {s.sport}
-                        </span>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.active ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}
-                        >
-                          {s.active ? "Disponível" : "Indisponível"}
-                        </span>
-                      </div>
-                      <h3 className="mt-2 text-2xl font-bold uppercase">{s.name}</h3>
-                      <ul className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
-                        <li className="flex items-center gap-1.5">
-                          <Users className="h-4 w-4 text-primary" />
-                          Até {s.capacity} jogadores
-                        </li>
-                        <li className="flex items-center gap-1.5">
-                          <Timer className="h-4 w-4 text-primary" />
-                          {s.slot_minutes} min
-                        </li>
-                      </ul>
-                      <div className="mt-6 flex items-center justify-between">
-                        <span className="text-lg font-bold">
-                          {formatBRL(s.price_cents)}
-                          <span className="text-sm font-normal text-muted-foreground">/hora</span>
-                        </span>
-                        <Link
-                          to="/reservar"
-                          search={{ espaco: s.id }}
-                          className="btn-jelly rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground"
-                        >
-                          Reservar
-                        </Link>
-                      </div>
-                    </div>
-                  </article>
-                </Tilt>
-              </Reveal>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section id="arena" className="scroll-mt-20 border-y border-border bg-card/40">
-        <div className="mx-auto grid max-w-7xl gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2 lg:items-center">
-          <Reveal>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">A arena</p>
-            <h2 className="mt-2 text-5xl font-bold uppercase sm:text-6xl">Conheça nosso espaço</h2>
-            <p className="mt-6 text-lg text-muted-foreground">
-              Estrutura pensada para quem joga por paixão: gramado sintético, areia tratada e um
-              ambiente acolhedor para times, amigos e famílias.
-            </p>
-            <ul className="mt-8 grid gap-4 sm:grid-cols-2">
-              {[
-                [Lightbulb, "Iluminação de qualidade"],
-                [ShowerHead, "Vestiários"],
-                [Coffee, "Área de convivência"],
-                [Heart, "Ambiente familiar"],
-              ].map(([Icon, t], i) => {
-                const I = Icon as typeof Lightbulb;
-                return (
-                  <li
-                    key={t as string}
-                    className="btn-jelly flex items-center gap-3 rounded-xl border border-border bg-background/50 p-4 transition-colors hover:border-primary/50"
-                    style={{ transitionDelay: `${i * 30}ms` }}
-                  >
-                    <I className="h-5 w-5 text-primary" />
-                    {t as string}
-                  </li>
-                );
-              })}
-            </ul>
-          </Reveal>
-          <Reveal delay={150}>
-            <Tilt max={6} className="mx-auto w-full max-w-[22rem] rounded-2xl">
-              <video
-                controls
-                playsInline
-                preload="none"
-                poster="/media/arena-reel-poster.webp"
-                aria-label="Vídeo da Arena Elsinho"
-                className="aspect-[9/16] w-full rounded-2xl bg-background object-cover"
-              >
-                <source src="/media/arena-reel.mp4" type="video/mp4" />
-                Seu navegador não oferece suporte à reprodução de vídeo.
-              </video>
-            </Tilt>
             <a
-              href={SITE.reel}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary"
+              href="#unidades"
+              className="mt-10 inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
             >
-              <Play className="h-4 w-4" />
-              Curta, comente e compartilhe! <ArrowRight className="h-4 w-4" />
+              Conheça as unidades <ArrowDown className="h-4 w-4" />
             </a>
-          </Reveal>
+          </div>
+          <div className="hero-ball-stage relative mx-auto grid min-h-[300px] w-full max-w-[520px] place-items-center sm:min-h-[440px]">
+            <div className="hero-ball-orbit hero-ball-orbit-one" aria-hidden="true" />
+            <div className="hero-ball-orbit hero-ball-orbit-two" aria-hidden="true" />
+            <VolleyballButton />
+            <span className="hero-corner-label" aria-hidden="true">
+              ARENA LESTE
+              <br />
+              MULTI SPORTS
+            </span>
+          </div>
+        </div>
+        <div className="mx-auto flex max-w-7xl flex-wrap gap-x-8 gap-y-2 px-4 pb-8 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:px-6">
+          <span>Vôlei de praia</span>
+          <span>•</span>
+          <span>Duas unidades</span>
+          <span>•</span>
+          <span>Agendamento direto</span>
+        </div>
+      </section>
+
+      <SportTicker />
+
+      <section id="torneio" className="scroll-mt-24 px-4 py-20 sm:px-6 sm:py-28">
+        <div className="mx-auto max-w-7xl">
+          <Link
+            to="/torneio"
+            aria-label="Abrir o Torneio Novembro Azul e inscrever uma equipe"
+            className="group block overflow-hidden rounded-[2rem] border border-border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <img
+              src="/images/torneio-novembro-azul.webp"
+              alt="Arte promocional do Torneio Novembro Azul: quarteto masculino de vôlei de praia, 28 de novembro às 15h, inscrições por equipe e premiação"
+              width={1600}
+              height={900}
+              loading="lazy"
+              decoding="async"
+              className="aspect-video w-full object-cover transition-transform duration-700 group-hover:scale-[1.015]"
+            />
+          </Link>
+          <div className="mt-8 flex flex-col gap-6 rounded-3xl border border-border bg-card p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">
+                Jogue por uma causa
+              </p>
+              <h2 className="mt-3 font-display text-4xl font-extrabold uppercase leading-[0.9] sm:text-5xl">
+                {TOURNAMENT.name}
+              </h2>
+              <p className="mt-3 max-w-3xl text-muted-foreground">
+                {TOURNAMENT.category} · 28 NOV, 15H · R$ 150 por equipe · Premiação de R$ 800, R$
+                400 e R$ 200, com troféus e medalhas. Saúde, esporte e conscientização sobre a saúde
+                do homem.
+              </p>
+            </div>
+            <Link
+              to="/torneio"
+              className="btn-jelly inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
+            >
+              Inscreva seu quarteto <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
       </section>
 
       <section
-        id="escolinha"
-        className="mx-auto grid max-w-7xl scroll-mt-20 gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2 lg:items-center"
+        id="unidades"
+        className="scroll-mt-24 border-y border-border bg-card/35 px-4 py-20 sm:px-6 sm:py-28"
       >
-        <Reveal>
-          <Tilt max={5} className="rounded-2xl">
-            <img
-              src={escolinha.url}
-              alt="Escolinha Elsinho: informações sobre os treinos e turmas"
-              loading="lazy"
-              decoding="async"
-              width={768}
-              height={768}
-              className="aspect-square w-full rounded-2xl object-contain"
-            />
-          </Tilt>
-        </Reveal>
-        <div>
-          <Reveal>
-            <span className="inline-block rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
-              Matrículas abertas
-            </span>
-            <h2 className="mt-4 text-5xl font-bold uppercase sm:text-6xl">Escolinha Elsinho</h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Futebol para crianças e adolescentes de{" "}
-              <strong className="text-foreground">5 a 17 anos</strong>, com acompanhamento e muito
-              incentivo.
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">
+                Escolha seu ponto de encontro
+              </p>
+              <h2 className="mt-3 max-w-3xl font-display text-5xl font-extrabold uppercase leading-[0.9] sm:text-7xl">
+                Duas unidades.
+                <br />
+                Uma só paixão.
+              </h2>
+            </div>
+            <p className="max-w-md text-muted-foreground">
+              Selecione a unidade para ver o endereço no mapa e abrir a rota. Cada botão de
+              agendamento abre uma conversa própria no WhatsApp.
             </p>
-          </Reveal>
-          <ul className="mt-8 space-y-4">
-            {[
-              [Target, "Fundamentos", "Técnica, passe, domínio e finalização."],
-              [Trophy, "Disciplina", "Respeito, foco e compromisso dentro e fora de campo."],
-              [Handshake, "Trabalho em equipe", "Aprender a jogar e vencer juntos."],
-            ].map(([Icon, t, d], i) => {
-              const I = Icon as typeof Target;
-              return (
-                <Reveal key={t as string} delay={i * 120}>
-                  <li className="flex gap-4">
-                    <span className="logo-mark grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-card">
-                      <I className="h-5 w-5 text-primary" />
-                    </span>
-                    <div>
-                      <p className="font-semibold">{t as string}</p>
-                      <p className="text-sm text-muted-foreground">{d as string}</p>
-                    </div>
-                  </li>
-                </Reveal>
-              );
-            })}
-          </ul>
-          <Reveal delay={200}>
-            <Magnetic>
-              <a
-                href={waLink("Olá! Quero informações sobre matrícula na Escolinha Elsinho.")}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-jelly mt-8 inline-flex min-h-12 items-center rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
-              >
-                Matricular pelo WhatsApp
-              </a>
-            </Magnetic>
-          </Reveal>
+          </div>
+          <UnitMap />
+          <div className="mt-8 flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              <strong className="text-foreground">Prefere confirmar antes de sair?</strong> Chame a
+              Arena pelo WhatsApp: {SITE.phoneDisplay}.
+            </p>
+            <Link
+              to="/reservar"
+              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-5 font-bold text-primary-foreground"
+            >
+              Agendar uma unidade <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-20 sm:px-6 sm:py-28 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">
+            Acompanhe a Arena
+          </p>
+          <h2 className="mt-3 max-w-3xl font-display text-5xl font-extrabold uppercase leading-[0.9] sm:text-7xl">
+            A próxima jogada
+            <br />
+            pode ser sua.
+          </h2>
+          <p className="mt-5 max-w-xl text-muted-foreground">
+            Confira novidades, modalidades e informações oficiais nos canais da Arena Leste.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <a
+            href={SITE.reelTour}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full border border-border px-6 font-bold hover:border-primary hover:text-primary"
+          >
+            <ArrowRight className="h-4 w-4" /> Ver a estrutura
+          </a>
+          <a
+            href={SITE.instagram}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full border border-border px-6 font-bold hover:border-primary hover:text-primary"
+          >
+            <Instagram className="h-4 w-4" /> Instagram
+          </a>
+          <a
+            href={SITE.beacons}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground"
+          >
+            <MapPin className="h-4 w-4" /> Links oficiais
+          </a>
         </div>
       </section>
     </>

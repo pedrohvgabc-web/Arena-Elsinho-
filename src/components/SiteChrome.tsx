@@ -1,93 +1,282 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Menu, X, Instagram, MessageCircle, MapPin, Clock, ShieldUser } from "lucide-react";
+import {
+  ArrowRight,
+  ExternalLink,
+  Instagram,
+  MapPin,
+  Menu,
+  MessageCircle,
+  ShieldUser,
+  Trophy,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SITE, waLink } from "@/lib/site";
-import { Magnetic } from "@/components/motion";
-import arenaLogo from "@/assets/arena-elsinho-logo.webp";
+import { SITE, TOURNAMENT, waLink } from "@/lib/site";
+import arenaLogo from "@/assets/arena-leste-logo.webp";
 
 export function Logo() {
   return (
-    <Link to="/" className="flex min-w-0 items-center gap-2 font-display text-xl font-bold uppercase sm:text-2xl" aria-label="Arena Elsinho — início">
-      <img src={arenaLogo} alt="" width={44} height={44} className="h-11 w-11 shrink-0 object-contain" />
-      <span className="truncate">Arena <span className="text-primary">Elsinho</span></span>
+    <Link to="/" className="flex shrink-0 items-center" aria-label={`${SITE.name} — início`}>
+      <img
+        src={arenaLogo}
+        alt={SITE.name}
+        width={150}
+        height={52}
+        className="h-11 w-auto max-w-[150px] rounded-md bg-white px-2 py-1 object-contain"
+      />
     </Link>
   );
 }
 
 const nav = [
-  { href: "/#espacos", label: "Espaços" },
-  { href: "/#escolinha", label: "Escolinha" },
-  { href: "/#arena", label: "A arena" },
+  { href: "/#unidades", label: "Unidades" },
+  { href: "/#torneio", label: "Torneio" },
+  { href: SITE.instagram, label: "Instagram", external: true },
 ];
+
+function TournamentRibbon() {
+  const message = `${TOURNAMENT.name} · ${TOURNAMENT.category} · ${TOURNAMENT.dateShort} às ${TOURNAMENT.time} · ${TOURNAMENT.entryFee} · Inscreva seu time`;
+  return (
+    <Link
+      to="/torneio"
+      className="event-ribbon"
+      aria-label={`${message}. Acesse para fazer a pré-inscrição.`}
+    >
+      <span className="event-ribbon-date">
+        28 NOV <span aria-hidden="true">·</span> 15H
+      </span>
+      <span className="event-ribbon-window" aria-hidden="true">
+        <span className="event-ribbon-track">
+          {[0, 1].map((copy) => (
+            <span className="event-ribbon-copy" key={copy}>
+              {message}
+              <span className="event-ribbon-star">✳</span>
+            </span>
+          ))}
+        </span>
+      </span>
+      <span className="event-ribbon-action">
+        Inscreva-se <ArrowRight className="h-3.5 w-3.5" />
+      </span>
+    </Link>
+  );
+}
 
 export function Header() {
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-      <div className="mx-auto grid h-16 max-w-7xl grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 px-4 sm:px-6 md:flex md:justify-between">
-        <Logo />
-        <nav className="hidden items-center gap-8 md:flex" aria-label="Principal">
-          {nav.map((n) => (
-            <a key={n.href} href={n.href} className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">{n.label}</a>
-          ))}
-          <Link to="/reservar" className="nav-link text-sm text-muted-foreground transition-colors hover:text-foreground">Reservar horário</Link>
-          <a href={SITE.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram da Arena Elsinho" title="Instagram @arena.elsinho" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition-colors hover:text-primary"><Instagram className="h-4 w-4" /></a>
-          <Button asChild variant="ghost" size="sm" className="text-muted-foreground"><Link to="/admin"><ShieldUser />Admin</Link></Button>
-          <Magnetic strength={0.3}>
-            <Link to="/reservar" className="btn-jelly rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-glow">Reservar agora</Link>
-          </Magnetic>
-        </nav>
-        <Button asChild variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-muted-foreground md:hidden"><Link to="/admin" aria-label="Administrador" title="Administrador"><ShieldUser className="h-4 w-4" /></Link></Button>
-        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:hidden" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? "Fechar menu" : "Abrir menu"}>
-          {open ? <X /> : <Menu />}
-        </Button>
-      </div>
-      {open && (
-        <nav className="animate-pop border-t border-border px-4 pb-4 md:hidden" aria-label="Menu móvel">
-          {nav.map((n) => (
-            <a key={n.href} href={n.href} onClick={() => setOpen(false)} className="block py-3 text-muted-foreground transition-colors hover:text-foreground">{n.label}</a>
-          ))}
-          <a href={SITE.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 py-3 text-muted-foreground transition-colors hover:text-foreground"><Instagram className="h-4 w-4 text-primary" />Instagram @arena.elsinho</a>
-          <Link to="/reservar" onClick={() => setOpen(false)} className="mt-2 block rounded-full bg-primary py-3 text-center font-bold text-primary-foreground">Reservar agora</Link>
-        </nav>
-      )}
-    </header>
+    <>
+      <TournamentRibbon />
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+          <Logo />
+          <nav className="hidden items-center gap-7 md:flex" aria-label="Navegação principal">
+            {nav.map((item) =>
+              item.external ? (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="nav-link text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="nav-link text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {item.label}
+                </a>
+              ),
+            )}
+            <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+              <Link to="/admin">
+                <ShieldUser />
+                Admin
+              </Link>
+            </Button>
+            <Link
+              to="/reservar"
+              className="btn-jelly inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-glow"
+            >
+              Agendar <ArrowRight className="h-4 w-4" />
+            </Link>
+          </nav>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 md:hidden"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            aria-label={open ? "Fechar menu" : "Abrir menu"}
+          >
+            {open ? <X /> : <Menu />}
+          </Button>
+        </div>
+        {open && (
+          <nav
+            className="animate-pop border-t border-border bg-background px-4 pb-4 md:hidden"
+            aria-label="Menu móvel"
+          >
+            <a
+              href="/#unidades"
+              onClick={() => setOpen(false)}
+              className="block py-3 text-muted-foreground hover:text-foreground"
+            >
+              Unidades
+            </a>
+            <a
+              href="/#torneio"
+              onClick={() => setOpen(false)}
+              className="block py-3 text-muted-foreground hover:text-foreground"
+            >
+              Torneio Novembro Azul
+            </a>
+            <a
+              href={SITE.instagram}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-h-11 items-center gap-2 py-2 text-muted-foreground hover:text-primary"
+            >
+              <Instagram className="h-4 w-4" />
+              Instagram oficial
+            </a>
+            <Link
+              to="/admin"
+              onClick={() => setOpen(false)}
+              className="flex min-h-11 items-center gap-2 py-2 text-muted-foreground hover:text-primary"
+            >
+              <ShieldUser className="h-4 w-4" />
+              Área administrativa
+            </Link>
+            <Link
+              to="/reservar"
+              onClick={() => setOpen(false)}
+              className="mt-2 flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary font-bold text-primary-foreground"
+            >
+              Escolher unidade <ArrowRight className="h-4 w-4" />
+            </Link>
+          </nav>
+        )}
+      </header>
+    </>
   );
 }
 
 export function Footer() {
   return (
     <footer className="border-t border-border bg-card/40">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-4">
-        <div className="md:col-span-1"><Logo /><p className="mt-4 text-sm text-muted-foreground">Cada partida, uma experiência simples, organizada e memorável.</p></div>
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.2fr_1fr_1fr_0.8fr]">
         <div>
-          <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold uppercase"><Clock className="h-4 w-4 text-primary" /> Horários</h3>
-          <ul className="space-y-1 text-sm text-muted-foreground">
-            <li>Segunda: 09:00 – 18:00</li>
-            <li>Terça a sábado: 08:00 – 12:00 e 14:00 – 23:59</li>
-            <li>Domingo: fechado</li>
+          <Logo />
+          <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
+            Esporte de areia, time reunido e boas histórias. A gente se encontra na Arena Leste.
+          </p>
+          <a
+            href={SITE.beacons}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-primary hover:underline"
+          >
+            Todos os links oficiais <ExternalLink className="h-4 w-4" />
+          </a>
+        </div>
+        <div>
+          <h3 className="mb-3 flex items-center gap-2 font-display text-xl font-bold uppercase">
+            <MapPin className="h-4 w-4 text-primary" /> Unidades
+          </h3>
+          <ul className="space-y-4 text-sm text-muted-foreground">
+            {SITE.units.map((unit, index) => (
+              <li key={unit.id}>
+                <span className="block font-semibold text-foreground">Unidade {index + 1}</span>
+                <a
+                  className="mt-1 block leading-relaxed hover:text-primary"
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(unit.mapQuery)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {unit.address}
+                </a>
+              </li>
+            ))}
           </ul>
         </div>
         <div>
-          <h3 className="mb-3 text-lg font-semibold uppercase">Contato</h3>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li className="flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-primary" /><a className="hover:text-foreground transition-colors" href={`https://www.google.com/maps/search/?api=1&query=${SITE.addressQuery}`} target="_blank" rel="noopener noreferrer">{SITE.address}</a></li>
-            <li><a className="nav-link flex w-fit gap-2 transition-colors hover:text-foreground" href={waLink("Olá! Vim pelo site da Arena Elsinho.")} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4 text-primary" />WhatsApp {SITE.phoneDisplay}</a></li>
-            <li><a className="nav-link flex w-fit gap-2 transition-colors hover:text-foreground" href={SITE.instagram} target="_blank" rel="noopener noreferrer"><Instagram className="h-4 w-4 text-primary" />Instagram</a></li>
+          <h3 className="mb-3 font-display text-xl font-bold uppercase">Contato</h3>
+          <ul className="space-y-3 text-sm text-muted-foreground">
+            <li>
+              <a
+                className="flex min-h-10 items-center gap-2 hover:text-primary"
+                href={waLink(
+                  `Olá! Vim pelo site da ${SITE.shortName} e gostaria de tirar uma dúvida.`,
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle className="h-4 w-4 text-primary" />
+                WhatsApp {SITE.phoneDisplay}
+              </a>
+            </li>
+            <li>
+              <a
+                className="flex min-h-10 items-center gap-2 hover:text-primary"
+                href={SITE.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Instagram className="h-4 w-4 text-primary" />
+                @arenalesteoficial
+              </a>
+            </li>
+            <li>
+              <Link
+                to="/reservar"
+                className="inline-flex min-h-10 items-center gap-2 hover:text-primary"
+              >
+                <Trophy className="h-4 w-4 text-primary" />
+                Agendar por unidade
+              </Link>
+            </li>
           </ul>
         </div>
         <div>
-          <h3 className="mb-3 text-lg font-semibold uppercase">Legal</h3>
+          <h3 className="mb-3 font-display text-xl font-bold uppercase">Informações</h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
-            <li><Link to="/privacidade" className="nav-link transition-colors hover:text-foreground">Política de privacidade</Link></li>
-            <li><Link to="/termos" className="nav-link transition-colors hover:text-foreground">Termos de uso</Link></li>
-            <li><Link to="/cancelamento" className="nav-link transition-colors hover:text-foreground">Política de cancelamento</Link></li>
-            <li><Button asChild variant="ghost" className="mt-2 min-h-11 px-0 text-muted-foreground"><Link to="/admin"><ShieldUser />Área do administrador</Link></Button></li>
+            <li>
+              <Link to="/torneio" className="nav-link hover:text-foreground">
+                Torneio Novembro Azul
+              </Link>
+            </li>
+            <li>
+              <Link to="/privacidade" className="nav-link hover:text-foreground">
+                Privacidade
+              </Link>
+            </li>
+            <li>
+              <Link to="/termos" className="nav-link hover:text-foreground">
+                Termos de uso
+              </Link>
+            </li>
+            <li>
+              <Link to="/cancelamento" className="nav-link hover:text-foreground">
+                Cancelamentos
+              </Link>
+            </li>
+            <li>
+              <Link to="/admin" className="nav-link hover:text-foreground">
+                Administração
+              </Link>
+            </li>
           </ul>
         </div>
       </div>
-      <p className="border-t border-border py-5 text-center text-xs text-muted-foreground">© {new Date().getFullYear()} Arena Elsinho</p>
+      <p className="border-t border-border px-4 py-5 text-center text-xs text-muted-foreground">
+        © {new Date().getFullYear()} {SITE.name}. Porto Velho/RO.
+      </p>
     </footer>
   );
 }
