@@ -123,7 +123,7 @@ function Reservar() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [date, setDate] = useState(todayInArena);
   const [selectedStarts, setSelectedStarts] = useState<string[]>([]);
-  const [stage, setStage] = useState<"schedule" | "details" | "success">("schedule");
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -161,7 +161,7 @@ function Reservar() {
   const availabilityQuery = useQuery({
     queryKey: ["booking-availability", spaceId, date],
     queryFn: () => fetchAvailability({ data: { spaceId: spaceId!, date } }),
-    enabled: Boolean(spaceId) && stage === "schedule",
+    enabled: Boolean(spaceId) && (step === 2 || step === 3),
     refetchInterval: 30_000,
     staleTime: 0,
   });
@@ -238,7 +238,6 @@ function Reservar() {
         return;
       }
       setBooking(result.booking as BookingResult);
-      setStage("success");
     } catch {
       setError("Não foi possível concluir agora. Verifique a conexão e tente novamente.");
     } finally {
@@ -249,9 +248,12 @@ function Reservar() {
   function startNewBooking() {
     setBooking(null);
     setSelectedStarts([]);
-    setStage("schedule");
+    setStep(1);
     setIdempotencyKey(globalThis.crypto.randomUUID());
-    setDate(todayInArena());
+    const currentDate = todayInArena();
+    setDate(currentDate);
+    const [year = 2026, month = 1] = currentDate.split("-").map(Number);
+    setCalendarMonth(new Date(Date.UTC(year, month - 1, 1, 12)));
   }
 
   const unit = SITE.units.find((item) => item.id === unitId)!;
@@ -285,18 +287,23 @@ function Reservar() {
           </p>
 
           <div
-            className="mt-8 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center"
+            className="mt-8 grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2"
             role="group"
             aria-label="Etapas da reserva"
           >
             {[
               {
-                label: "Quadra e horário",
-                active: stage === "schedule" || stage === "details",
-                done: stage !== "schedule",
+                label: "Quadra",
+                active: !booking && step === 1,
+                done: Boolean(booking) || step > 1,
               },
-              { label: "Seus dados", active: stage === "details", done: stage === "success" },
-              { label: "Confirmação", active: stage === "success", done: stage === "success" },
+              { label: "Dia", active: !booking && step === 2, done: Boolean(booking) || step > 2 },
+              {
+                label: "Horário",
+                active: !booking && step === 3,
+                done: Boolean(booking) || step > 3,
+              },
+              { label: "Dados", active: !booking && step === 4, done: Boolean(booking) },
             ].map((item, index) => (
               <div
                 key={item.label}
@@ -313,7 +320,7 @@ function Reservar() {
                 >
                   {item.label}
                 </span>
-                {index < 2 && (
+                {index < 3 && (
                   <span
                     className="mx-1 hidden h-px w-5 bg-border sm:block sm:w-8"
                     aria-hidden="true"
@@ -355,14 +362,14 @@ function Reservar() {
                 <MessageCircle className="h-4 w-4" /> Tirar dúvida pelo WhatsApp
               </a>
             </div>
-          ) : stage === "success" && booking ? (
+          ) : booking ? (
             <BookingConfirmation
               booking={booking}
               paymentLabel={selectedMethodLabel}
               onNewBooking={startNewBooking}
               helpMessage={helpMessage}
             />
-          ) : stage === "details" ? (
+          ) : step === 4 ? (
             <form
               key="booking-details"
               onSubmit={finishBooking}
@@ -371,7 +378,7 @@ function Reservar() {
               <button
                 type="button"
                 onClick={() => {
-                  setStage("schedule");
+                  setStep(3);
                   setIdempotencyKey(globalThis.crypto.randomUUID());
                   setError(null);
                 }}
@@ -381,7 +388,7 @@ function Reservar() {
               </button>
               <div className="mt-5">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">
-                  Último passo
+                  Etapa 4 · contato e pagamento
                 </p>
                 <h2 className="mt-2 font-display text-3xl font-bold uppercase sm:text-4xl">
                   Quem vai jogar?
@@ -487,256 +494,319 @@ function Reservar() {
               </p>
             </form>
           ) : (
-            <section className="mt-8 space-y-7" aria-label="Escolha sua quadra e horário">
-              <div>
-                <h2 className="font-display text-2xl font-bold uppercase sm:text-3xl">
-                  1. Escolha a unidade
-                </h2>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {SITE.units.map((option, index) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      aria-pressed={unitId === option.id}
-                      onClick={() => chooseUnit(option.id as UnitId)}
-                      className={`min-h-24 rounded-2xl border p-4 text-left transition-colors ${unitId === option.id ? "border-primary bg-primary/10" : "border-border bg-card/50 hover:border-primary/50"}`}
-                    >
-                      <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.13em] text-primary">
-                        <MapPin className="h-4 w-4" /> Unidade {index + 1}
-                      </span>
-                      <span className="mt-1 block font-display text-xl font-bold uppercase">
-                        {option.name}
-                      </span>
-                      <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                        {option.address}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-end justify-between gap-3">
+            <section className="mt-8 space-y-7" aria-label="Etapas para reservar uma quadra">
+              {step === 1 && (
+                <>
                   <div>
                     <h2 className="font-display text-2xl font-bold uppercase sm:text-3xl">
-                      2. Selecione a quadra
+                      Escolha a unidade
                     </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Quatro quadras de areia nesta unidade.
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                    {unit.name}
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {unitSpaces.map((space) => (
-                    <button
-                      key={space.id}
-                      type="button"
-                      aria-pressed={space.id === spaceId}
-                      onClick={() => {
-                        setSpaceId(space.id);
-                        setSelectedStarts([]);
-                        setIdempotencyKey(globalThis.crypto.randomUUID());
-                      }}
-                      className={`min-h-20 rounded-xl border p-3 text-left transition-colors ${space.id === spaceId ? "border-primary bg-primary/10" : "border-border bg-card/50 hover:border-primary/50"}`}
-                    >
-                      <span className="block text-xs font-semibold text-muted-foreground">
-                        Vôlei de praia
-                      </span>
-                      <span className="mt-1 block font-display text-xl font-bold uppercase">
-                        {space.name}
-                      </span>
-                      <span className="mt-1 block text-xs text-primary">
-                        {formatBRL(space.price_cents)} · {space.slot_minutes} min
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                <div className="rounded-2xl border border-border bg-card/50 p-4 sm:p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-display text-2xl font-bold uppercase">
-                        3. Escolha o dia
-                      </h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Horário local · Porto Velho
-                      </p>
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setCalendarMonth(new Date(Date.UTC(year, month - 1, 1, 12)))}
-                        aria-label="Mês anterior"
-                        className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:border-primary"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCalendarMonth(new Date(Date.UTC(year, month + 1, 1, 12)))}
-                        aria-label="Próximo mês"
-                        className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:border-primary"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-center font-semibold capitalize">{calendarTitle}</p>
-                  <div className="mt-3 grid grid-cols-7 gap-1 text-center">
-                    {WEEKDAYS.map((weekday) => (
-                      <span key={weekday} className="py-2 text-xs font-bold text-muted-foreground">
-                        {weekday}
-                      </span>
-                    ))}
-                    {calendarCells.map((cell) => {
-                      if (!cell.date || !cell.day)
-                        return <span key={cell.key} aria-hidden="true" />;
-                      const past = cell.date < today;
-                      const active = cell.date === date;
-                      return (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {SITE.units.map((option, index) => (
                         <button
-                          key={cell.key}
+                          key={option.id}
                           type="button"
-                          disabled={past}
-                          aria-label={dateLabel(cell.date)}
-                          aria-pressed={active}
+                          aria-pressed={unitId === option.id}
+                          onClick={() => chooseUnit(option.id as UnitId)}
+                          className={`min-h-24 rounded-2xl border p-4 text-left transition-colors ${unitId === option.id ? "border-primary bg-primary/10" : "border-border bg-card/50 hover:border-primary/50"}`}
+                        >
+                          <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.13em] text-primary">
+                            <MapPin className="h-4 w-4" /> Unidade {index + 1}
+                          </span>
+                          <span className="mt-1 block font-display text-xl font-bold uppercase">
+                            {option.name}
+                          </span>
+                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                            {option.address}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <h2 className="font-display text-2xl font-bold uppercase sm:text-3xl">
+                          Selecione a quadra
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Quatro quadras de areia nesta unidade.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
+                        {unit.name}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {unitSpaces.map((space) => (
+                        <button
+                          key={space.id}
+                          type="button"
+                          aria-pressed={space.id === spaceId}
                           onClick={() => {
-                            setDate(cell.date!);
+                            setSpaceId(space.id);
                             setSelectedStarts([]);
                             setIdempotencyKey(globalThis.crypto.randomUUID());
-                            setError(null);
                           }}
-                          className={`min-h-10 rounded-lg text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${active ? "bg-primary text-primary-foreground" : "hover:bg-primary/10 hover:text-primary"}`}
+                          className={`min-h-20 rounded-xl border p-3 text-left transition-colors ${space.id === spaceId ? "border-primary bg-primary/10" : "border-border bg-card/50 hover:border-primary/50"}`}
                         >
-                          {cell.day}
+                          <span className="block text-xs font-semibold text-muted-foreground">
+                            Vôlei de praia
+                          </span>
+                          <span className="mt-1 block font-display text-xl font-bold uppercase">
+                            {space.name}
+                          </span>
+                          <span className="mt-1 block text-xs text-primary">
+                            {formatBRL(space.price_cents)} · {space.slot_minutes} min
+                          </span>
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                  <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                    <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                    <span className="capitalize">{dateLabel(date)}</span>
-                  </p>
-                </div>
 
-                <div className="rounded-2xl border border-border bg-card/50 p-4 sm:p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="font-display text-2xl font-bold uppercase">4. Horários</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Selecione até {MAX_SLOTS} horários disponíveis.
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={!selectedSpace}
+                      onClick={() => {
+                        setStep(2);
+                        setError(null);
+                      }}
+                      className="btn-jelly inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Escolher o dia <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <div className="grid gap-5">
+                {step === 2 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      <ChevronLeft className="h-4 w-4" /> Voltar às quadras
+                    </button>
+                    <div className="rounded-2xl border border-border bg-card/50 p-4 sm:p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="font-display text-2xl font-bold uppercase">
+                            Escolha o dia
+                          </h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Horário local · Porto Velho
+                          </p>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCalendarMonth(new Date(Date.UTC(year, month - 1, 1, 12)))
+                            }
+                            aria-label="Mês anterior"
+                            className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:border-primary"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCalendarMonth(new Date(Date.UTC(year, month + 1, 1, 12)))
+                            }
+                            aria-label="Próximo mês"
+                            className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:border-primary"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="mt-4 text-center font-semibold capitalize">{calendarTitle}</p>
+                      <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+                        {WEEKDAYS.map((weekday) => (
+                          <span
+                            key={weekday}
+                            className="py-2 text-xs font-bold text-muted-foreground"
+                          >
+                            {weekday}
+                          </span>
+                        ))}
+                        {calendarCells.map((cell) => {
+                          if (!cell.date || !cell.day)
+                            return <span key={cell.key} aria-hidden="true" />;
+                          const past = cell.date < today;
+                          const active = cell.date === date;
+                          return (
+                            <button
+                              key={cell.key}
+                              type="button"
+                              disabled={past}
+                              aria-label={dateLabel(cell.date)}
+                              aria-pressed={active}
+                              onClick={() => {
+                                setDate(cell.date!);
+                                setSelectedStarts([]);
+                                setIdempotencyKey(globalThis.crypto.randomUUID());
+                                setError(null);
+                              }}
+                              className={`min-h-10 rounded-lg text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${active ? "bg-primary text-primary-foreground" : "hover:bg-primary/10 hover:text-primary"}`}
+                            >
+                              {cell.day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                        <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                        <span className="capitalize">{dateLabel(date)}</span>
                       </p>
                     </div>
-                    <Clock3 className="mt-1 h-5 w-5 text-primary" />
-                  </div>
-                  {availabilityQuery.isLoading ? (
-                    <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Consultando disponibilidade…
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStep(3);
+                          setError(null);
+                        }}
+                        className="btn-jelly inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground"
+                      >
+                        Consultar horários <ArrowRight className="h-4 w-4" />
+                      </button>
                     </div>
-                  ) : availabilityQuery.isError ? (
-                    <p
-                      className="mt-5 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
-                      role="alert"
+                  </>
+                )}
+
+                {step === 3 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
-                      Não foi possível consultar os horários. Tente novamente.
-                    </p>
-                  ) : slots.length === 0 ? (
-                    <p className="mt-5 rounded-xl border border-dashed border-border p-5 text-sm leading-relaxed text-muted-foreground">
-                      Não há horários cadastrados para este dia. Escolha outra data ou consulte a
-                      Arena pelo WhatsApp.
-                    </p>
-                  ) : (
-                    <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                      {slots.map((slot) => {
-                        const picked = selectedStarts.includes(slot.start);
-                        const unavailable = slot.status !== "available";
-                        const statusLabel =
-                          slot.status === "pending"
-                            ? "Em reserva"
-                            : slot.status === "confirmed"
-                              ? "Ocupado"
-                              : slot.status === "unavailable"
-                                ? "Indisponível"
-                                : "Disponível";
-                        return (
-                          <button
-                            key={slot.start}
-                            type="button"
-                            disabled={
-                              unavailable || (!picked && selectedStarts.length >= MAX_SLOTS)
-                            }
-                            aria-pressed={picked}
-                            title={statusLabel}
-                            onClick={() => toggleStart(slot.start)}
-                            className={`min-h-[68px] rounded-xl border px-2 py-2 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${picked ? "border-primary bg-primary text-primary-foreground" : unavailable ? "border-border bg-muted/60 text-muted-foreground line-through" : "border-success/40 bg-success/5 hover:border-success hover:bg-success/10"}`}
-                          >
-                            <span className="block font-display text-lg font-bold">
-                              {slot.start}
-                            </span>
-                            <span className="mt-0.5 block text-[10px] font-semibold">
-                              {picked ? "Selecionado" : statusLabel}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      <ChevronLeft className="h-4 w-4" /> Voltar à data
+                    </button>
+                    <div className="rounded-2xl border border-border bg-card/50 p-4 sm:p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h2 className="font-display text-2xl font-bold uppercase">
+                            Escolha os horários
+                          </h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {unit.name} · {dateLabel(date)} · até {MAX_SLOTS} horários disponíveis.
+                          </p>
+                        </div>
+                        <Clock3 className="mt-1 h-5 w-5 text-primary" />
+                      </div>
+                      {availabilityQuery.isLoading ? (
+                        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Consultando disponibilidade…
+                        </div>
+                      ) : availabilityQuery.isError ? (
+                        <p
+                          className="mt-5 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
+                          role="alert"
+                        >
+                          Não foi possível consultar os horários. Tente novamente.
+                        </p>
+                      ) : slots.length === 0 ? (
+                        <p className="mt-5 rounded-xl border border-dashed border-border p-5 text-sm leading-relaxed text-muted-foreground">
+                          Não há horários cadastrados para este dia. Escolha outra data ou consulte
+                          a Arena pelo WhatsApp.
+                        </p>
+                      ) : (
+                        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                          {slots.map((slot) => {
+                            const picked = selectedStarts.includes(slot.start);
+                            const unavailable = slot.status !== "available";
+                            const statusLabel =
+                              slot.status === "pending"
+                                ? "Em reserva"
+                                : slot.status === "confirmed"
+                                  ? "Ocupado"
+                                  : slot.status === "unavailable"
+                                    ? "Indisponível"
+                                    : "Disponível";
+                            return (
+                              <button
+                                key={slot.start}
+                                type="button"
+                                disabled={
+                                  unavailable || (!picked && selectedStarts.length >= MAX_SLOTS)
+                                }
+                                aria-pressed={picked}
+                                title={statusLabel}
+                                onClick={() => toggleStart(slot.start)}
+                                className={`min-h-[68px] rounded-xl border px-2 py-2 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${picked ? "border-primary bg-primary text-primary-foreground" : unavailable ? "border-border bg-muted/60 text-muted-foreground line-through" : "border-success/40 bg-success/5 hover:border-success hover:bg-success/10"}`}
+                              >
+                                <span className="block font-display text-lg font-bold">
+                                  {slot.start}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] font-semibold">
+                                  {picked ? "Selecionado" : statusLabel}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <i className="h-2.5 w-2.5 rounded-full bg-success/70" /> Livre
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <i className="h-2.5 w-2.5 rounded-full bg-primary" /> Selecionado
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <i className="h-2.5 w-2.5 rounded-full bg-muted-foreground/60" /> Ocupado
+                        </span>
+                      </div>
+                      {error && (
+                        <p className="mt-4 text-sm text-destructive" role="alert">
+                          {error}
+                        </p>
+                      )}
                     </div>
-                  )}
-                  <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <i className="h-2.5 w-2.5 rounded-full bg-success/70" /> Livre
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <i className="h-2.5 w-2.5 rounded-full bg-primary" /> Selecionado
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <i className="h-2.5 w-2.5 rounded-full bg-muted-foreground/60" /> Ocupado
-                    </span>
-                  </div>
-                  {error && (
-                    <p className="mt-4 text-sm text-destructive" role="alert">
-                      {error}
-                    </p>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
 
-              <div className="flex flex-col gap-4 rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.13em] text-primary">
-                    Resumo
-                  </p>
-                  <p className="mt-1 font-semibold">
-                    {selectedSpace?.name ?? "Escolha uma quadra"} ·{" "}
-                    {selectedStarts.length
-                      ? formatSlotRanges(
-                          slots.filter((slot) => selectedStarts.includes(slot.start)),
-                        )
-                      : "Escolha um horário"}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {selectedStarts.length
-                      ? `${selectedStarts.length} horário(s) · ${formatBRL(amountCents)}`
-                      : "Selecione os horários livres no calendário."}
-                  </p>
+              {step === 3 && (
+                <div className="flex flex-col gap-4 rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.13em] text-primary">
+                      Resumo
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {selectedSpace?.name ?? "Escolha uma quadra"} ·{" "}
+                      {selectedStarts.length
+                        ? formatSlotRanges(
+                            slots.filter((slot) => selectedStarts.includes(slot.start)),
+                          )
+                        : "Escolha um horário"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {selectedStarts.length
+                        ? `${selectedStarts.length} horário(s) · ${formatBRL(amountCents)}`
+                        : "Selecione os horários livres no calendário."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!selectedSpace || !selectedStarts.length}
+                    onClick={() => {
+                      setStep(4);
+                      setError(null);
+                    }}
+                    className="btn-jelly inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Continuar para os dados <ArrowRight className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  disabled={!selectedSpace || !selectedStarts.length}
-                  onClick={() => {
-                    setStage("details");
-                    setError(null);
-                  }}
-                  className="btn-jelly inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  Informar meus dados <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
+              )}
             </section>
           )}
         </div>

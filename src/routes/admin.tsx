@@ -27,6 +27,9 @@ import {
 import { TournamentRegistrationsAdmin } from "@/components/TournamentRegistrationsAdmin";
 import { ArenaSettingsAdmin } from "@/components/ArenaSettingsAdmin";
 import { CurrentBookingsAdmin } from "@/components/CurrentBookingsAdmin";
+import { AdminOverview } from "@/components/AdminOverview";
+import { AdminDataBackup } from "@/components/AdminDataBackup";
+import { ADMIN_MODULES, type AdminModuleId } from "@/lib/admin-navigation";
 import { SITE } from "@/lib/site";
 import {
   arenaNow,
@@ -139,7 +142,7 @@ function Dashboard() {
   const [space, setSpace] = useState("all");
   const [status, setStatus] = useState("all");
   const [reveal, setReveal] = useState<string | null>(null);
-  const [showLegacy, setShowLegacy] = useState(false);
+  const [activeModule, setActiveModule] = useState<AdminModuleId>("overview");
   const fetchDay = useServerFn(adminDay);
   const update = useServerFn(adminUpdateBooking);
   const logout = useServerFn(adminLogout);
@@ -147,7 +150,7 @@ function Dashboard() {
     queryKey: ["admin-day", date],
     queryFn: () => fetchDay({ data: { date } }),
     retry: false,
-    enabled: showLegacy,
+    enabled: activeModule === "legacy",
   });
 
   const rows = useMemo(
@@ -226,227 +229,313 @@ function Dashboard() {
           Sair
         </button>
       </div>
-
-      <TournamentRegistrationsAdmin />
-      <CurrentBookingsAdmin />
-      <ArenaSettingsAdmin />
-
-      <details
-        className="mt-8 rounded-2xl border border-border bg-card/40 p-4 sm:p-5"
-        onToggle={(event) => setShowLegacy(event.currentTarget.open)}
-      >
-        <summary className="min-h-11 cursor-pointer py-2 font-bold">
-          Arquivo de reservas da Arena Elsinho — abrir se necessário
-        </summary>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Os registros abaixo pertencem ao fluxo de reservas anterior à Arena Leste. Eles não
-          informam disponibilidade atual, não criam agendamentos para as novas unidades e não devem
-          ser tratados como confirmação sem validar com a equipe.
-        </p>
-        {showLegacy && (
-          <>
-            <PendingList
-              onConfirm={(id) => act(id, "mark_paid")}
-              onCancel={(id) => act(id, "cancel")}
-              onOpen={setDate}
-            />
-
-            <div className="mt-8 flex items-center gap-2">
+      <div className="mt-7 grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start">
+        <nav
+          aria-label="Módulos administrativos"
+          className="flex gap-2 overflow-x-auto pb-2 lg:sticky lg:top-24 lg:flex-col lg:overflow-visible lg:pb-0"
+        >
+          {ADMIN_MODULES.map((module) => {
+            const Icon = module.icon;
+            const active = activeModule === module.id;
+            return (
               <button
-                aria-label="Dia anterior"
-                onClick={() => setDate(shift(date, -1))}
-                className="grid h-11 w-11 place-items-center rounded-lg border border-border"
+                key={module.id}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                aria-controls="admin-module-content"
+                onClick={() => setActiveModule(module.id)}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:w-full lg:rounded-xl ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground"}`}
               >
-                <ChevronLeft />
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {module.label}
               </button>
-              <input
-                type="date"
-                aria-label="Data"
-                value={date}
-                onChange={(e) => e.target.value && setDate(e.target.value)}
-                className="h-11 rounded-lg border border-input bg-card px-3"
-              />
-              <button
-                aria-label="Próximo dia"
-                onClick={() => setDate(shift(date, 1))}
-                className="grid h-11 w-11 place-items-center rounded-lg border border-border"
-              >
-                <ChevronRight />
-              </button>
-              <button
-                onClick={() => setDate(arenaNow().date)}
-                className="h-11 rounded-lg border border-border px-4 text-sm"
-              >
-                Hoje
-              </button>
-            </div>
+            );
+          })}
+        </nav>
 
-            <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-              {[
-                ["Receita confirmada", formatBRL(revenue)],
-                ["Reservas do dia", String(active.length)],
-                ["Pagamentos pendentes", String(pending)],
-                ["Ocupação histórica", occupancy],
-                [
-                  "Próximo horário",
-                  next
-                    ? `${next.start_time.slice(0, 5)} · ${next.customer_name.split(" ")[0]}`
-                    : "—",
-                ],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-2xl border border-border bg-card p-4">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">{k}</p>
-                  <p className="mt-1 font-display text-2xl font-bold">{v}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              <input
-                placeholder="Buscar cliente ou código"
-                aria-label="Buscar"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-11 min-w-56 flex-1 rounded-lg border border-input bg-card px-3"
-              />
-              <select
-                aria-label="Espaço"
-                value={space}
-                onChange={(e) => setSpace(e.target.value)}
-                className="h-11 rounded-lg border border-input bg-card px-3"
-              >
-                <option value="all">Todos os espaços</option>
-                {day.data?.spaces.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="h-11 rounded-lg border border-input bg-card px-3"
-              >
-                <option value="all">Todos os status</option>
-                {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {day.isLoading ? (
-              <p className="mt-10 flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Carregando…
+        <div id="admin-module-content" className="min-w-0">
+          {activeModule === "overview" && (
+            <AdminOverview onNavigate={(module) => setActiveModule(module)} />
+          )}
+          {activeModule === "agenda" && <CurrentBookingsAdmin />}
+          {activeModule === "courts" && <ArenaSettingsAdmin />}
+          {activeModule === "tournament" && <TournamentRegistrationsAdmin />}
+          {activeModule === "backup" && <AdminDataBackup />}
+          {activeModule === "contact" && (
+            <section aria-labelledby="admin-contact-heading">
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-primary">
+                Canais publicados
               </p>
-            ) : rows.length === 0 ? (
-              <p className="mt-10 rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
-                Nenhuma reserva para este filtro.
+              <h2
+                id="admin-contact-heading"
+                className="mt-2 font-display text-4xl font-extrabold uppercase"
+              >
+                Contato oficial
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Referências oficiais usadas no site. A edição direta está desativada para evitar a
+                publicação de um endereço ou contato não confirmado.
               </p>
-            ) : (
-              <div className="mt-6 space-y-3 lg:space-y-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border">
-                <div className="hidden grid-cols-[90px_1.4fr_150px_1.3fr_130px_110px_auto] gap-3 bg-card px-4 py-3 text-xs uppercase tracking-wider text-muted-foreground lg:grid">
-                  <span>Horário</span>
-                  <span>Cliente</span>
-                  <span>WhatsApp</span>
-                  <span>Espaço</span>
-                  <span>Pagamento</span>
-                  <span>Status</span>
-                  <span>Ações</span>
-                </div>
-                {rows.map((b) => {
-                  const st = b.payment_status as PaymentStatus;
-                  const shown = reveal === b.id;
-                  const g = groups.get(b.group_code ?? b.booking_code);
-                  const code = b.group_code ?? b.booking_code;
-                  return (
-                    <div
-                      key={b.id}
-                      className="grid gap-2 rounded-2xl border border-border bg-card p-4 lg:grid-cols-[90px_1.4fr_150px_1.3fr_130px_110px_auto] lg:items-center lg:gap-3 lg:rounded-none lg:border-0 lg:border-t lg:bg-transparent"
-                    >
-                      <span className="font-display text-xl font-bold">
-                        {b.start_time.slice(0, 5)}
-                      </span>
-                      <div>
-                        <p className="font-medium">{b.customer_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {code}
-                          {g && g.times.length > 1
-                            ? ` · ${g.times.length} horários (${g.times.join(", ")})`
-                            : ""}
-                          {b.notes ? ` · ${b.notes}` : ""}
-                        </p>
-                      </div>
-                      <span className="flex items-center gap-1 text-sm">
-                        {shown ? b.phone : maskPhone(b.phone)}
-                        <button
-                          aria-label={shown ? "Ocultar telefone" : "Mostrar telefone"}
-                          onClick={() => setReveal(shown ? null : b.id)}
-                          className="p-1"
-                        >
-                          {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </span>
-                      <span className="text-sm">{spaceName(b.space_id)}</span>
-                      <span className="text-sm">
-                        {PAYMENT_LABEL[b.payment_method as PaymentMethod]}
-                      </span>
-                      <span
-                        className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[st]}`}
-                      >
-                        {STATUS_LABEL[st]}
-                      </span>
-                      <div className="flex flex-wrap gap-1">
-                        {st === "pending" && (
-                          <IconBtn label="Confirmar reserva" onClick={() => act(b.id, "mark_paid")}>
-                            <Check className="h-4 w-4 text-success" />
-                          </IconBtn>
-                        )}
-                        <IconBtn
-                          label="Copiar WhatsApp"
-                          onClick={() => {
-                            navigator.clipboard.writeText(b.phone);
-                            toast.success("Copiado");
-                          }}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </IconBtn>
-                        <a
-                          aria-label="Enviar confirmação"
-                          title="Enviar confirmação"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:bg-accent"
-                          href={`https://wa.me/55${b.phone}?text=${encodeURIComponent(`Olá, ${b.customer_name.split(" ")[0]}! Este contato é sobre o registro antigo ${code}, ${spaceName(b.space_id)}, ${b.booking_date.split("-").reverse().join("/")} às ${(g?.times ?? [b.start_time.slice(0, 5)]).join(", ")}. Confirme com a equipe da Arena Leste se este registro ainda se aplica antes de considerar o horário confirmado.`)}`}
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </a>
-                        <IconBtn
-                          label="Registrar observação"
-                          onClick={() => {
-                            const n = prompt("Observação", b.notes ?? "");
-                            if (n !== null) act(b.id, "note", n);
-                          }}
-                        >
-                          <StickyNote className="h-4 w-4" />
-                        </IconBtn>
-                        {(st === "pending" || st === "paid") && (
-                          <IconBtn label="Cancelar reserva" onClick={() => act(b.id, "cancel")}>
-                            <X className="h-4 w-4 text-destructive" />
-                          </IconBtn>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <article className="border-l-2 border-primary pl-4 py-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    WhatsApp
+                  </p>
+                  <a
+                    className="mt-1 inline-block font-semibold text-primary hover:underline"
+                    href={`https://wa.me/${SITE.whatsapp}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {SITE.phoneDisplay}
+                  </a>
+                </article>
+                <article className="border-l-2 border-primary pl-4 py-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Instagram
+                  </p>
+                  <a
+                    className="mt-1 inline-block font-semibold text-primary hover:underline"
+                    href={SITE.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    @arenalesteoficial
+                  </a>
+                </article>
+                {SITE.units.map((unit, index) => (
+                  <article key={unit.id} className="border-l-2 border-border pl-4 py-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Unidade {index + 1}
+                    </p>
+                    <p className="mt-1 font-semibold">{unit.name}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{unit.address}</p>
+                  </article>
+                ))}
               </div>
-            )}
-          </>
-        )}
-      </details>
+            </section>
+          )}
+          {activeModule === "legacy" && (
+            <section
+              className="rounded-2xl border border-border bg-card/40 p-4 sm:p-5"
+              aria-labelledby="legacy-heading"
+            >
+              <h2 id="legacy-heading" className="font-display text-2xl font-bold uppercase">
+                Arquivo de reservas da Arena Elsinho
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Os registros abaixo pertencem ao fluxo de reservas anterior à Arena Leste. Eles não
+                informam disponibilidade atual, não criam agendamentos para as novas unidades e não
+                devem ser tratados como confirmação sem validar com a equipe.
+              </p>
+              <div className="mt-6">
+                <PendingList
+                  onConfirm={(id) => act(id, "mark_paid")}
+                  onCancel={(id) => act(id, "cancel")}
+                  onOpen={setDate}
+                />
+
+                <div className="mt-8 flex items-center gap-2">
+                  <button
+                    aria-label="Dia anterior"
+                    onClick={() => setDate(shift(date, -1))}
+                    className="grid h-11 w-11 place-items-center rounded-lg border border-border"
+                  >
+                    <ChevronLeft />
+                  </button>
+                  <input
+                    type="date"
+                    aria-label="Data"
+                    value={date}
+                    onChange={(e) => e.target.value && setDate(e.target.value)}
+                    className="h-11 rounded-lg border border-input bg-card px-3"
+                  />
+                  <button
+                    aria-label="Próximo dia"
+                    onClick={() => setDate(shift(date, 1))}
+                    className="grid h-11 w-11 place-items-center rounded-lg border border-border"
+                  >
+                    <ChevronRight />
+                  </button>
+                  <button
+                    onClick={() => setDate(arenaNow().date)}
+                    className="h-11 rounded-lg border border-border px-4 text-sm"
+                  >
+                    Hoje
+                  </button>
+                </div>
+
+                <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  {[
+                    ["Receita confirmada", formatBRL(revenue)],
+                    ["Reservas do dia", String(active.length)],
+                    ["Pagamentos pendentes", String(pending)],
+                    ["Ocupação histórica", occupancy],
+                    [
+                      "Próximo horário",
+                      next
+                        ? `${next.start_time.slice(0, 5)} · ${next.customer_name.split(" ")[0]}`
+                        : "—",
+                    ],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-2xl border border-border bg-card p-4">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">{k}</p>
+                      <p className="mt-1 font-display text-2xl font-bold">{v}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <input
+                    placeholder="Buscar cliente ou código"
+                    aria-label="Buscar"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-11 min-w-56 flex-1 rounded-lg border border-input bg-card px-3"
+                  />
+                  <select
+                    aria-label="Espaço"
+                    value={space}
+                    onChange={(e) => setSpace(e.target.value)}
+                    className="h-11 rounded-lg border border-input bg-card px-3"
+                  >
+                    <option value="all">Todos os espaços</option>
+                    {day.data?.spaces.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="h-11 rounded-lg border border-input bg-card px-3"
+                  >
+                    <option value="all">Todos os status</option>
+                    {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {day.isLoading ? (
+                  <p className="mt-10 flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando…
+                  </p>
+                ) : rows.length === 0 ? (
+                  <p className="mt-10 rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
+                    Nenhuma reserva para este filtro.
+                  </p>
+                ) : (
+                  <div className="mt-6 space-y-3 lg:space-y-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border">
+                    <div className="hidden grid-cols-[90px_1.4fr_150px_1.3fr_130px_110px_auto] gap-3 bg-card px-4 py-3 text-xs uppercase tracking-wider text-muted-foreground lg:grid">
+                      <span>Horário</span>
+                      <span>Cliente</span>
+                      <span>WhatsApp</span>
+                      <span>Espaço</span>
+                      <span>Pagamento</span>
+                      <span>Status</span>
+                      <span>Ações</span>
+                    </div>
+                    {rows.map((b) => {
+                      const st = b.payment_status as PaymentStatus;
+                      const shown = reveal === b.id;
+                      const g = groups.get(b.group_code ?? b.booking_code);
+                      const code = b.group_code ?? b.booking_code;
+                      return (
+                        <div
+                          key={b.id}
+                          className="grid gap-2 rounded-2xl border border-border bg-card p-4 lg:grid-cols-[90px_1.4fr_150px_1.3fr_130px_110px_auto] lg:items-center lg:gap-3 lg:rounded-none lg:border-0 lg:border-t lg:bg-transparent"
+                        >
+                          <span className="font-display text-xl font-bold">
+                            {b.start_time.slice(0, 5)}
+                          </span>
+                          <div>
+                            <p className="font-medium">{b.customer_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {code}
+                              {g && g.times.length > 1
+                                ? ` · ${g.times.length} horários (${g.times.join(", ")})`
+                                : ""}
+                              {b.notes ? ` · ${b.notes}` : ""}
+                            </p>
+                          </div>
+                          <span className="flex items-center gap-1 text-sm">
+                            {shown ? b.phone : maskPhone(b.phone)}
+                            <button
+                              aria-label={shown ? "Ocultar telefone" : "Mostrar telefone"}
+                              onClick={() => setReveal(shown ? null : b.id)}
+                              className="p-1"
+                            >
+                              {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </span>
+                          <span className="text-sm">{spaceName(b.space_id)}</span>
+                          <span className="text-sm">
+                            {PAYMENT_LABEL[b.payment_method as PaymentMethod]}
+                          </span>
+                          <span
+                            className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[st]}`}
+                          >
+                            {STATUS_LABEL[st]}
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {st === "pending" && (
+                              <IconBtn
+                                label="Confirmar reserva"
+                                onClick={() => act(b.id, "mark_paid")}
+                              >
+                                <Check className="h-4 w-4 text-success" />
+                              </IconBtn>
+                            )}
+                            <IconBtn
+                              label="Copiar WhatsApp"
+                              onClick={() => {
+                                navigator.clipboard.writeText(b.phone);
+                                toast.success("Copiado");
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </IconBtn>
+                            <a
+                              aria-label="Enviar confirmação"
+                              title="Enviar confirmação"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="grid h-10 w-10 place-items-center rounded-lg border border-border hover:bg-accent"
+                              href={`https://wa.me/55${b.phone}?text=${encodeURIComponent(`Olá, ${b.customer_name.split(" ")[0]}! Este contato é sobre o registro antigo ${code}, ${spaceName(b.space_id)}, ${b.booking_date.split("-").reverse().join("/")} às ${(g?.times ?? [b.start_time.slice(0, 5)]).join(", ")}. Confirme com a equipe da Arena Leste se este registro ainda se aplica antes de considerar o horário confirmado.`)}`}
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </a>
+                            <IconBtn
+                              label="Registrar observação"
+                              onClick={() => {
+                                const n = prompt("Observação", b.notes ?? "");
+                                if (n !== null) act(b.id, "note", n);
+                              }}
+                            >
+                              <StickyNote className="h-4 w-4" />
+                            </IconBtn>
+                            {(st === "pending" || st === "paid") && (
+                              <IconBtn label="Cancelar reserva" onClick={() => act(b.id, "cancel")}>
+                                <X className="h-4 w-4 text-destructive" />
+                              </IconBtn>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

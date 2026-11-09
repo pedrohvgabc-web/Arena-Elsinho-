@@ -63,10 +63,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "theme-color", content: "#FFF9F2" },
       { title: "Arena Leste Multi Sports — Vôlei de praia em Porto Velho" },
       {
         name: "description",
-        content: `${SITE.name}: esporte de areia, duas unidades em Porto Velho/RO e agendamento direto pelo WhatsApp.`,
+        content: `${SITE.name}: esporte de areia, duas unidades em Porto Velho/RO e agendamento online direto pelo site.`,
       },
     ],
     links: [
@@ -76,7 +77,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=JetBrains+Mono:wght@400;500;600;700&display=swap",
       },
     ],
   }),

@@ -947,3 +947,196 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
     });
     return result;
   });
+
+const copyHoursSchema = z
+  .object({
+    sourceUnitId: z.enum(["unidade-1", "unidade-2"]),
+    targetUnitId: z.enum(["unidade-1", "unidade-2"]),
+    days: z
+      .array(
+        z.object({
+          weekday: z.number().int().min(0).max(6),
+          windows: z
+            .array(
+              z.object({
+                start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+                end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+              }),
+            )
+            .max(2),
+        }),
+      )
+      .length(7),
+  })
+  .superRefine((data, ctx) => {
+    if (data.sourceUnitId === data.targetUnitId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["targetUnitId"],
+        message: "Escolha uma unidade diferente para receber a cópia.",
+      });
+    }
+    const weekdays = data.days.map((day) => day.weekday);
+    if (new Set(weekdays).size !== 7) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["days"],
+        message: "A grade precisa conter cada dia da semana uma única vez.",
+      });
+    }
+    data.days.forEach((day, index) => {
+      const parsed = weeklyHoursSchema.safeParse({
+        unitId: data.sourceUnitId,
+        weekday: day.weekday,
+        windows: day.windows,
+      });
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["days", index, ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    });
+  });
+
+/** Copies the current seven-day editor draft transactionally to the other unit. */
+export const adminCopyArenaHours = createServerFn({ method: "POST" })
+  .inputValidator(copyHoursSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    await db.begin(async (tx) => {
+      for (const day of data.days) {
+        await tx`
+          INSERT INTO public.arena_weekly_hours (unit_id, weekday, windows, updated_at)
+          VALUES (${data.targetUnitId}, ${day.weekday}, ${JSON.stringify(day.windows)}::jsonb, now())
+          ON CONFLICT (unit_id, weekday) DO UPDATE
+          SET windows = EXCLUDED.windows, updated_at = now()
+        `;
+      }
+      await tx`
+        INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+        VALUES (
+          'admin', 'arena.hours.copy', 'arena_weekly_hours', ${data.targetUnitId},
+          ${JSON.stringify({ sourceUnitId: data.sourceUnitId, targetUnitId: data.targetUnitId, days: data.days.length })}::jsonb
+        )
+      `;
+    });
+    return { ok: true as const, error: null };
+  });
+
+export const adminDashboardSummary = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const db = await database();
+  const date = arenaNow().date;
+  const [statsRows, courtRows, tournamentRows, nextRows] = await Promise.all([
+    db`
+      SELECT
+        COUNT(DISTINCT COALESCE(b.group_code, b.booking_code)) FILTER (
+          WHERE b.booking_date = ${date}::date AND b.payment_status IN ('pending', 'paid')
+        ) AS today_bookings,
+        COUNT(DISTINCT COALESCE(b.group_code, b.booking_code)) FILTER (
+          WHERE b.booking_date = ${date}::date AND b.payment_status = 'pending'
+        ) AS today_pending
+      FROM public.bookings b
+      INNER JOIN public.arena_spaces s ON s.id = b.space_id
+      WHERE s.unit_id IN ('unidade-1', 'unidade-2')
+    `,
+    db`
+      SELECT COUNT(*) AS count FROM public.arena_spaces
+      WHERE unit_id IN ('unidade-1', 'unidade-2') AND active = true AND price_cents > 0
+    `,
+    db`SELECT COUNT(*) AS count FROM public.tournament_registrations WHERE status = 'pending'`,
+    db`
+      SELECT booking_date, start_time, customer_name, space_name, unit_id
+      FROM (
+        SELECT DISTINCT ON (COALESCE(b.group_code, b.booking_code))
+          b.booking_date::text AS booking_date,
+          to_char(b.start_time, 'HH24:MI') AS start_time,
+          b.customer_name,
+          s.name AS space_name,
+          s.unit_id,
+          COALESCE(b.group_code, b.booking_code) AS group_code
+        FROM public.bookings b
+        INNER JOIN public.arena_spaces s ON s.id = b.space_id
+        WHERE s.unit_id IN ('unidade-1', 'unidade-2')
+          AND b.booking_date >= ${date}::date AND b.payment_status IN ('pending', 'paid')
+        ORDER BY COALESCE(b.group_code, b.booking_code), b.booking_date, b.start_time
+      ) upcoming
+      ORDER BY booking_date, start_time
+      LIMIT 5
+    `,
+  ]);
+  const stats = statsRows[0] as
+    { today_bookings: number | string; today_pending: number | string } | undefined;
+  return {
+    date,
+    todayBookings: Number(stats?.today_bookings ?? 0),
+    todayPending: Number(stats?.today_pending ?? 0),
+    activeCourts: Number((courtRows[0] as { count: number | string } | undefined)?.count ?? 0),
+    tournamentPending: Number(
+      (tournamentRows[0] as { count: number | string } | undefined)?.count ?? 0,
+    ),
+    upcoming: nextRows as unknown as Array<{
+      booking_date: string;
+      start_time: string;
+      customer_name: string;
+      space_name: string;
+      unit_id: string;
+    }>,
+  };
+});
+
+export const adminExportOperationalData = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ confirmed: z.literal(true) }))
+  .handler(async () => {
+    await requireAdmin();
+    if (!(await rateLimit(`export:${await clientKey()}`, 3, 60))) {
+      return {
+        ok: false as const,
+        error: "Muitas exportações. Aguarde um minuto e tente novamente.",
+      };
+    }
+    const db = await database();
+    const [spaces, hours, bookings, registrations] = await Promise.all([
+      db`
+        SELECT id, unit_id, name, sport, slot_minutes, price_cents, active, sort_order
+        FROM public.arena_spaces ORDER BY sort_order
+      `,
+      db`SELECT unit_id, weekday, windows, updated_at FROM public.arena_weekly_hours ORDER BY unit_id, weekday`,
+      db`
+        SELECT id, booking_code, group_code, space_id, booking_date::text AS booking_date,
+          to_char(start_time, 'HH24:MI:SS') AS start_time, to_char(end_time, 'HH24:MI:SS') AS end_time,
+          customer_name, phone, payment_method, payment_status, amount_cents, expires_at::text AS expires_at,
+          notes, created_at::text AS created_at
+        FROM public.bookings ORDER BY booking_date, start_time
+      `,
+      db`
+        SELECT registration_code, captain_name, captain_phone, team_name, athletes,
+          status, created_at::text AS created_at
+        FROM public.tournament_registrations ORDER BY created_at
+      `,
+    ]);
+    await audit("admin", "data.export", "arena_data", undefined, {
+      spaces: spaces.length,
+      hours: hours.length,
+      bookings: bookings.length,
+      tournamentRegistrations: registrations.length,
+    });
+    return {
+      ok: true as const,
+      data: {
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        includes: ["quadras", "grade semanal", "reservas", "pre-inscricoes do torneio"],
+        excludes: ["senhas", "sessoes administrativas", "tokens", "payloads de pagamento"],
+        spaces,
+        weeklyHours: hours,
+        bookings,
+        tournamentRegistrations: registrations,
+      },
+    };
+  });

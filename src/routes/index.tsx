@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowRight, Instagram, MapPin, Trophy } from "lucide-react";
+import { ArrowDown, ArrowRight, Instagram, MapPin } from "lucide-react";
 import { useState } from "react";
 import { UnitMap } from "@/components/UnitMap";
+import { LazyLoopVideo } from "@/components/LazyLoopVideo";
 import { SITE, TOURNAMENT } from "@/lib/site";
 
 export const Route = createFileRoute("/")({
@@ -20,7 +21,10 @@ export const Route = createFileRoute("/")({
           "Duas unidades e oito quadras de areia em Porto Velho. Escolha onde jogar e faça seu agendamento online.",
       },
       { property: "og:image", content: SITE.socialImage },
-      { property: "og:image:alt", content: "Ilustração de vôlei de praia para a Arena Leste" },
+      {
+        property: "og:image:alt",
+        content: "Partida de vôlei de praia na Arena Leste em Porto Velho",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:image", content: SITE.socialImage },
@@ -104,7 +108,7 @@ function Home() {
             <p className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-primary sm:text-sm">
               <MapPin className="h-4 w-4" /> Porto Velho, Rondônia
             </p>
-            <h1 className="mt-7 max-w-3xl font-display text-6xl font-extrabold uppercase leading-[0.82] tracking-tight sm:text-8xl lg:text-[7.4rem]">
+            <h1 className="mt-7 max-w-3xl font-display text-6xl font-extrabold uppercase leading-[0.82] tracking-tight text-[#fff9f2] sm:text-8xl lg:text-[7.4rem]">
               O jogo
               <br />
               começa na
@@ -115,18 +119,20 @@ function Home() {
               Reúna seu time, escolha sua unidade e venha viver o esporte do seu jeito. A Arena
               Leste é o ponto de encontro para quem ama jogar.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 grid max-w-xl gap-3 sm:grid-cols-2">
               <Link
                 to="/reservar"
-                className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
+                search={{ unit: "unidade-1" }}
+                className="btn-jelly inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-5 font-bold text-primary-foreground shadow-glow"
               >
-                Escolher unidade <ArrowRight className="h-4 w-4" />
+                Agendar Unidade 1 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                to="/torneio"
-                className="inline-flex min-h-12 items-center gap-2 rounded-full border border-border bg-card/70 px-6 font-semibold backdrop-blur transition-colors hover:border-primary/50 hover:text-primary"
+                to="/reservar"
+                search={{ unit: "unidade-2" }}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/35 px-5 font-bold text-white transition-colors hover:border-primary hover:text-primary"
               >
-                Novembro Azul <Trophy className="h-4 w-4" />
+                Agendar Unidade 2 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
             <a
@@ -139,20 +145,16 @@ function Home() {
           <div className="hero-ball-stage relative mx-auto grid min-h-[300px] w-full max-w-[520px] place-items-center sm:min-h-[440px]">
             <div
               className="hero-photo-frame absolute inset-3 overflow-hidden rounded-[2rem] border border-white/15 sm:inset-0"
-              aria-label="Imagem ilustrativa de uma partida de vôlei de praia ao entardecer"
+              aria-hidden="true"
             >
-              <img
-                src="/images/arena-leste-beach-hero.webp"
-                alt="Imagem ilustrativa de uma partida de vôlei de praia ao entardecer"
-                width={1920}
-                height={1080}
-                fetchPriority="high"
-                decoding="async"
+              <LazyLoopVideo
+                src="/videos/arena-leste-hero.mp4"
+                poster="/images/arena-leste-hero-poster.webp"
                 className="hero-img h-full w-full object-cover"
               />
               <div className="hero-photo-shade absolute inset-0" aria-hidden="true" />
               <span className="hero-photo-label absolute bottom-3 right-3 rounded-full border border-white/20 bg-black/50 px-3 py-1 text-[10px] font-semibold text-white/85 backdrop-blur-sm">
-                Imagem ilustrativa
+                Arena Leste · Porto Velho
               </span>
             </div>
             <div className="hero-ball-orbit hero-ball-orbit-one" aria-hidden="true" />
@@ -176,44 +178,52 @@ function Home() {
 
       <SportTicker />
 
-      <section id="torneio" className="scroll-mt-24 px-4 py-20 sm:px-6 sm:py-28">
+      <section id="torneio" className="scroll-mt-24 px-4 py-16 sm:px-6 sm:py-24">
         <div className="mx-auto max-w-7xl">
           <Link
             to="/torneio"
             aria-label="Abrir o Torneio Novembro Azul e inscrever uma equipe"
-            className="group block overflow-hidden rounded-[2rem] border border-border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="group grid overflow-hidden rounded-[1.75rem] border border-campaign/30 bg-campaign text-campaign-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:grid-cols-[1.08fr_0.92fr]"
           >
             <img
               src="/images/torneio-novembro-azul.webp"
-              alt="Arte promocional do Torneio Novembro Azul: quarteto masculino de vôlei de praia, 28 de novembro às 15h, inscrições por equipe e premiação"
+              alt=""
               width={1600}
               height={900}
               loading="lazy"
               decoding="async"
               className="aspect-video w-full object-cover transition-transform duration-700 group-hover:scale-[1.015]"
             />
-          </Link>
-          <div className="mt-8 flex flex-col gap-6 rounded-3xl border border-border bg-card p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">
-                Jogue por uma causa
-              </p>
-              <h2 className="mt-3 font-display text-4xl font-extrabold uppercase leading-[0.9] sm:text-5xl">
-                {TOURNAMENT.name}
-              </h2>
-              <p className="mt-3 max-w-3xl text-muted-foreground">
-                {TOURNAMENT.category} · 28 NOV, 15H · R$ 150 por equipe · Premiação de R$ 800, R$
-                400 e R$ 200, com troféus e medalhas. Saúde, esporte e conscientização sobre a saúde
-                do homem.
-              </p>
+            <div className="flex flex-col justify-between gap-7 p-6 sm:p-8 lg:p-10">
+              <div>
+                <p className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/85">
+                  Jogue por uma causa · 28 nov · 15h
+                </p>
+                <h2 className="mt-4 font-display text-4xl font-extrabold uppercase leading-[0.9] sm:text-5xl">
+                  {TOURNAMENT.name}
+                </h2>
+                <p className="mt-4 text-sm leading-relaxed text-white/90 sm:text-base">
+                  {TOURNAMENT.category} · R$ 150 por equipe. Esporte e conscientização sobre a saúde
+                  do homem.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-t border-white/25 pt-4">
+                {TOURNAMENT.prizes.map((prize) => (
+                  <span className="min-w-0" key={prize.place}>
+                    <span className="block text-[10px] font-bold uppercase tracking-wide text-white/80 sm:text-xs">
+                      {prize.place}
+                    </span>
+                    <strong className="mt-1 block font-display text-xl font-extrabold sm:text-2xl">
+                      {prize.amount}
+                    </strong>
+                  </span>
+                ))}
+              </div>
+              <span className="inline-flex min-h-12 w-fit items-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground transition-transform group-hover:translate-x-1">
+                Inscreva seu quarteto <ArrowRight className="h-4 w-4" />
+              </span>
             </div>
-            <Link
-              to="/torneio"
-              className="btn-jelly inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
-            >
-              Inscreva seu quarteto <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+          </Link>
         </div>
       </section>
 
@@ -246,6 +256,7 @@ function Home() {
             </p>
             <Link
               to="/reservar"
+              search={{ unit: "unidade-1" }}
               className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-5 font-bold text-primary-foreground"
             >
               Agendar uma unidade <ArrowRight className="h-4 w-4" />

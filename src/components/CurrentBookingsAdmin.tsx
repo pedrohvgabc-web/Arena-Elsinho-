@@ -1,7 +1,16 @@
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Clock3, Loader2, MessageCircle, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Loader2,
+  MessageCircle,
+  Search,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { adminCurrentDay, adminUpdateBooking } from "@/lib/arena.functions";
 import { SITE } from "@/lib/site";
@@ -111,6 +120,8 @@ export function CurrentBookingsAdmin() {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => arenaNow().date);
   const [working, setWorking] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all");
   const query = useQuery({
     queryKey: ["admin-current-day", date],
     queryFn: () => fetchCurrentDay({ data: { date } }),
@@ -126,6 +137,23 @@ export function CurrentBookingsAdmin() {
   const paidAmount = groups
     .filter((booking) => booking.status === "paid")
     .reduce((sum, booking) => sum + booking.amountCents, 0);
+  const filteredGroups = useMemo(() => {
+    const term = searchText.trim().toLocaleLowerCase("pt-BR");
+    return groups.filter((booking) => {
+      if (statusFilter !== "all" && booking.status !== statusFilter) return false;
+      if (!term) return true;
+      return [
+        booking.name,
+        booking.phone,
+        booking.code,
+        booking.spaceName,
+        formatSlotRanges(booking.slots),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("pt-BR")
+        .includes(term);
+    });
+  }, [groups, searchText, statusFilter]);
 
   async function act(booking: BookingGroup, action: "mark_paid" | "cancel") {
     const question =
@@ -243,6 +271,39 @@ export function CurrentBookingsAdmin() {
                 </div>
               ))}
             </div>
+            <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_13rem]">
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Buscar reservas
+                <span className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-input bg-background px-3">
+                  <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    placeholder="Nome, telefone, código ou quadra"
+                    className="min-w-0 flex-1 bg-transparent text-sm font-normal normal-case tracking-normal outline-none"
+                  />
+                </span>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Status
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as PaymentStatus | "all")}
+                  className="mt-1.5 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal"
+                >
+                  <option value="all">Todos os status</option>
+                  {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground" aria-live="polite">
+              Mostrando {filteredGroups.length} de {groups.length} reservas nesta data.
+            </p>
             {groups.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-5 py-8 text-center">
                 <Clock3 className="mx-auto h-6 w-6 text-muted-foreground" />
@@ -251,9 +312,13 @@ export function CurrentBookingsAdmin() {
                   As reservas das duas unidades aparecerão aqui depois de concluídas.
                 </p>
               </div>
+            ) : filteredGroups.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
+                Nenhuma reserva corresponde à busca ou ao status selecionado.
+              </p>
             ) : (
               <ul className="space-y-3">
-                {groups.map((booking) => {
+                {filteredGroups.map((booking) => {
                   const unit = SITE.units.find((item) => item.id === booking.unitId);
                   const message = `Olá, ${booking.name.split(" ")[0]}! Sobre sua reserva ${booking.code} na ${unit?.name ?? "Arena Leste"}, ${booking.date.split("-").reverse().join("/")} às ${formatSlotRanges(booking.slots)}.`;
                   return (

@@ -68,7 +68,7 @@ function TournamentPage() {
             <h1 className="mt-5 font-display text-6xl font-extrabold uppercase leading-[0.82] text-white sm:text-8xl">
               Torneio
               <br />
-              <span className="text-primary">Novembro</span>
+              <span className="text-[#df4f07]">Novembro</span>
               <br />
               Azul
             </h1>

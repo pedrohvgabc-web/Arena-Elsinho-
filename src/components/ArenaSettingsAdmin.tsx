@@ -1,11 +1,12 @@
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Check, Clock3, Loader2, Plus, Save, Settings2, Trash2 } from "lucide-react";
+import { Check, Clock3, Copy, Loader2, Plus, Save, Settings2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { SITE } from "@/lib/site";
 import {
   adminArenaSettings,
+  adminCopyArenaHours,
   adminUpdateArenaHours,
   adminUpdateArenaSpace,
 } from "@/lib/arena.functions";
@@ -51,6 +52,7 @@ function initialHours(schedules: Schedule[] | undefined): DraftHours {
 
 export function ArenaSettingsAdmin() {
   const fetchSettings = useServerFn(adminArenaSettings);
+  const copyHours = useServerFn(adminCopyArenaHours);
   const saveSpace = useServerFn(adminUpdateArenaSpace);
   const saveHours = useServerFn(adminUpdateArenaHours);
   const queryClient = useQueryClient();
@@ -60,6 +62,7 @@ export function ArenaSettingsAdmin() {
   const [hoursDraft, setHoursDraft] = useState<DraftHours>({ "unidade-1": {}, "unidade-2": {} });
   const [savingSpaceId, setSavingSpaceId] = useState<string | null>(null);
   const [savingDay, setSavingDay] = useState<string | null>(null);
+  const [copyingHours, setCopyingHours] = useState(false);
 
   const query = useQuery({
     queryKey: ["admin-arena-settings"],
@@ -71,7 +74,7 @@ export function ArenaSettingsAdmin() {
     if (!query.data) return;
     setSpaceDrafts(
       Object.fromEntries(
-        query.data.spaces.map((space: Space) => [
+        query.data.spaces.map((space) => [
           space.id,
           {
             name: space.name,
@@ -148,6 +151,42 @@ export function ArenaSettingsAdmin() {
       toast.error("Não foi possível salvar os horários.");
     } finally {
       setSavingDay(null);
+    }
+  }
+
+  async function copyWeekToOtherUnit() {
+    const targetUnitId: UnitId = selectedUnit === "unidade-1" ? "unidade-2" : "unidade-1";
+    const sourceLabel = selectedUnit === "unidade-1" ? "Unidade 1" : "Unidade 2";
+    const targetLabel = targetUnitId === "unidade-1" ? "Unidade 1" : "Unidade 2";
+    if (
+      !window.confirm(
+        `Copiar a grade semanal de ${sourceLabel} para ${targetLabel}? Os sete dias da unidade de destino serão substituídos. Reservas existentes não serão alteradas.`,
+      )
+    )
+      return;
+
+    const days = WEEKDAYS.map((_, weekday) => ({
+      weekday,
+      windows: (hoursDraft[selectedUnit][weekday] ?? []).map((window) => ({ ...window })),
+    }));
+    setCopyingHours(true);
+    try {
+      const result = await copyHours({
+        data: { sourceUnitId: selectedUnit, targetUnitId, days },
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      const cloned = Object.fromEntries(
+        days.map(({ weekday, windows }) => [weekday, windows.map((window) => ({ ...window }))]),
+      );
+      setHoursDraft((current) => ({ ...current, [targetUnitId]: cloned }));
+      toast.success(`Grade copiada para ${targetLabel}.`);
+    } catch {
+      toast.error("Não foi possível copiar a grade semanal.");
+    } finally {
+      setCopyingHours(false);
     }
   }
 
@@ -336,18 +375,33 @@ export function ArenaSettingsAdmin() {
                 unidade fechada.
               </p>
             </div>
-            <div className="flex gap-2" aria-label="Unidade para editar">
-              {UNIT_IDS.map((unitId, index) => (
-                <button
-                  key={unitId}
-                  type="button"
-                  onClick={() => setSelectedUnit(unitId)}
-                  aria-pressed={selectedUnit === unitId}
-                  className={`min-h-11 rounded-full px-4 text-sm font-bold ${selectedUnit === unitId ? "bg-secondary text-secondary-foreground" : "border border-border text-muted-foreground hover:text-foreground"}`}
-                >
-                  Unidade {index + 1}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex gap-2" aria-label="Unidade para editar">
+                {UNIT_IDS.map((unitId, index) => (
+                  <button
+                    key={unitId}
+                    type="button"
+                    onClick={() => setSelectedUnit(unitId)}
+                    aria-pressed={selectedUnit === unitId}
+                    className={`min-h-11 rounded-full px-4 text-sm font-bold ${selectedUnit === unitId ? "bg-secondary text-secondary-foreground" : "border border-border text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Unidade {index + 1}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={copyingHours}
+                onClick={() => void copyWeekToOtherUnit()}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-50"
+              >
+                {copyingHours ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+                Copiar para outra unidade
+              </button>
             </div>
           </div>
           <p className="mb-4 text-sm font-semibold text-foreground">{unitName}</p>

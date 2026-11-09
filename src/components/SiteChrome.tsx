@@ -101,6 +101,7 @@ export function Header() {
             </Button>
             <Link
               to="/reservar"
+              search={{ unit: "unidade-1" }}
               className="btn-jelly inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-glow"
             >
               Agendar <ArrowRight className="h-4 w-4" />
@@ -155,6 +156,7 @@ export function Header() {
             </Link>
             <Link
               to="/reservar"
+              search={{ unit: "unidade-1" }}
               onClick={() => setOpen(false)}
               className="mt-2 flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary font-bold text-primary-foreground"
             >
@@ -235,6 +237,7 @@ export function Footer() {
             <li>
               <Link
                 to="/reservar"
+                search={{ unit: "unidade-1" }}
                 className="inline-flex min-h-10 items-center gap-2 hover:text-primary"
               >
                 <Trophy className="h-4 w-4 text-primary" />
