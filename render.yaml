@@ -32,9 +32,7 @@ services:
     runtime: static
     name: arena-elsinho-static
     branch: main
-    buildCommand: >-
-      mkdir -p redirect-only &&
-      printf '%s' '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="0;url=https://arena-leste.onrender.com/"><title>Arena Leste</title></head><body><p>O endereço mudou. <a href="https://arena-leste.onrender.com/">Abrir Arena Leste</a></p><script>location.replace("https://arena-leste.onrender.com"+location.pathname+location.search+location.hash)</script></body></html>' > redirect-only/index.html
+    buildCommand: mkdir -p redirect-only && printf 'redirect-ready' > redirect-only/placeholder.txt
     staticPublishPath: redirect-only
     headers:
       - path: /*
