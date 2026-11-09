@@ -27,10 +27,13 @@ export const Route = createFileRoute("/torneio")({
         property: "og:image:alt",
         content: "Ilustração de vôlei de praia para o Torneio Novembro Azul",
       },
+      { property: "og:site_name", content: SITE.name },
+      { property: "og:url", content: `${SITE.url}/torneio` },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:image", content: SITE.socialImage },
     ],
+    links: [{ rel: "canonical", href: `${SITE.url}/torneio` }],
   }),
   component: TournamentPage,
 });

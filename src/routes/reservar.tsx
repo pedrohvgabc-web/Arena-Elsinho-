@@ -95,8 +95,11 @@ export const Route = createFileRoute("/reservar")({
         content: "Agendamento online para as oito quadras de areia das duas unidades.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:site_name", content: SITE.name },
+      { property: "og:url", content: `${SITE.url}/reservar` },
       { name: "robots", content: "index, follow" },
     ],
+    links: [{ rel: "canonical", href: `${SITE.url}/reservar` }],
   }),
   component: Reservar,
 });

@@ -1,12 +1,14 @@
 export const SITE = {
   name: "Arena Leste Multi Sports",
   shortName: "Arena Leste",
+  url: "https://arena-leste.onrender.com",
+  logoUrl: "https://arena-leste.onrender.com/arena-leste-logo.png",
   whatsapp: "5569993566796",
   phoneDisplay: "(69) 99356-6796",
   instagram: "https://www.instagram.com/arenalesteoficial/",
   reelTour: "https://www.instagram.com/reel/DVd5VWMALKs/",
   beacons: "https://beacons.ai/arenaleste",
-  socialImage: "https://arena-elsinho-static.onrender.com/images/torneio-novembro-azul-social.jpg",
+  socialImage: "https://arena-leste.onrender.com/images/torneio-novembro-azul-social.jpg",
   units: [
     {
       id: "unidade-1",

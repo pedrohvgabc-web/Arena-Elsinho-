@@ -20,16 +20,30 @@ export const Route = createFileRoute("/")({
       },
       { property: "og:image", content: SITE.socialImage },
       { property: "og:image:alt", content: "Arena Leste Multi Sports em Porto Velho" },
+      { property: "og:site_name", content: SITE.name },
+      { property: "og:url", content: SITE.url },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:image", content: SITE.socialImage },
     ],
+    links: [{ rel: "canonical", href: SITE.url }],
   }),
   component: HomePage,
 });
 
 const tickerText =
   "Arena Leste · Vôlei de praia · Duas unidades · Oito quadras de areia · Porto Velho/RO · ";
+
+const organizationJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: SITE.name,
+  alternateName: SITE.shortName,
+  url: SITE.url,
+  logo: SITE.logoUrl,
+  sameAs: [SITE.instagram, SITE.beacons],
+  telephone: `+${SITE.whatsapp}`,
+});
 
 function HomePage() {
   const [mapUnit, setMapUnit] = useState<(typeof SITE.units)[number]>(SITE.units[0]);
@@ -158,6 +172,7 @@ function HomePage() {
 
   return (
     <div id="vHome">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organizationJsonLd }} />
       <div id="intro" aria-hidden="true">
         <div>
           <p>Abrindo os espaços da Arena Leste…</p>
