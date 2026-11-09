@@ -31,6 +31,15 @@
   --ring: var(--ac);
 }
 
+.strip .stint {
+  background: linear-gradient(
+    100deg,
+    rgb(10 12 14 / 0.68),
+    rgb(10 12 14 / 0.34) 55%,
+    rgb(10 12 14 / 0.12)
+  );
+}
+
 .mapblock {
   margin-top: var(--s3);
   border-top: 1px solid var(--bd);
