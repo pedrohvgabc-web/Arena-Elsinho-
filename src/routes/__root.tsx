@@ -20,6 +20,17 @@ import zipCss from "../arena-zip.css?url";
 import zipAdaptCss from "../arena-zip-adapt.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
+const organizationJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: SITE.name,
+  alternateName: SITE.shortName,
+  url: SITE.url,
+  logo: SITE.logoUrl,
+  sameAs: [SITE.instagram, SITE.beacons],
+  telephone: `+${SITE.whatsapp}`,
+});
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
@@ -98,6 +109,10 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="pt-BR">
       <head>
         <HeadContent />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: organizationJsonLd }}
+        />
       </head>
       <body>
         {children}
