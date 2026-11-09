@@ -1,5 +1,5 @@
-# Frontend SPA no CDN gratuito do Render; o Web Service arena-elsinho continua
-# sendo o backend Node e não é renomeado nem removido.
+# Frontend no CDN gratuito do Render. O backend Node arena-elsinho segue
+# inalterado e continua servindo a API pelos rewrites do novo host.
 services:
   - type: web
     runtime: static
@@ -21,7 +21,6 @@ services:
         name: Permissions-Policy
         value: 'camera=(), microphone=(), geolocation=(self "https://www.google.com" "https://maps.google.com")'
     routes:
-      # Manter a API no serviço Node existente para preservar os agendamentos.
       - type: rewrite
         source: /api/*
         destination: https://arena-elsinho.onrender.com/api/*
@@ -33,8 +32,8 @@ services:
     runtime: static
     name: arena-elsinho-static
     branch: main
-    buildCommand: pnpm install --frozen-lockfile && pnpm run build:static
-    staticPublishPath: dist/client
+    buildCommand: mkdir -p redirect-only && printf 'redirect-ready' > redirect-only/placeholder.txt
+    staticPublishPath: redirect-only
     headers:
       - path: /*
         name: X-Content-Type-Options
@@ -49,11 +48,7 @@ services:
         name: Permissions-Policy
         value: 'camera=(), microphone=(), geolocation=(self "https://www.google.com" "https://maps.google.com")'
     routes:
-      # Manter funções TanStack e rotas de servidor no backend, incluindo webhooks.
-      - type: rewrite
-        source: /api/*
-        destination: https://arena-elsinho.onrender.com/api/*
-      # Qualquer rota de frontend usa o shell estático servido pelo CDN.
-      - type: rewrite
+      # Redirect permanente: mantém links antigos apontando ao site atual.
+      - type: redirect
         source: /*
-        destination: /index.html
+        destination: https://arena-leste.onrender.com/*
