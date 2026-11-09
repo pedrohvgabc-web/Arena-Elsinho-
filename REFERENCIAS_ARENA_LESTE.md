@@ -35,3 +35,16 @@ Consulta realizada em 8 de novembro de 2026. O Instagram não permitiu inspecion
 - [Render Blueprint Specification](https://render.com/docs/blueprint-spec): referência consultada para a sintaxe de `headers` e ordem de `routes` declarada no `render.yaml` do Static Site.
 - [Render Redirects and Rewrites](https://render.com/docs/redirects-rewrites): referência consultada para preservar o proxy `/api/*` antes do fallback `/index.html`.
 - O mapa incorporado usa uma URL de busca do próprio Google Maps (`maps.google.com/maps?q=…&output=embed`), não a Maps JavaScript API nem um token/chave de navegador. O endereço é apresentado como aproximado quando o geocodificador não localiza o número predial.
+
+## Verificação adicional de horários e preços — 8 de novembro de 2026
+
+- O perfil oficial [@arenalesteoficial](https://www.instagram.com/arenalesteoficial/) mantém o destaque “HORÁRIOS”, mas o Instagram exige login para abrir os Stories destacados; a bio/página pública não fornece grade semanal verificável.
+- O Reel oficial [“Partiu areia?” de 26/04/2026](https://www.instagram.com/reel/DXneD2PgDVu/) confirma somente o convite para reservar e o uso de areia em Porto Velho; a legenda pública extraída não informa preço nem grade semanal.
+- O Reel oficial [de reservas de 10/11/2025](https://www.instagram.com/reel/DQ4cIE5gEvf/) cita vôlei, vôlei de areia, beach tennis e futevôlei em hashtags, mas não publica horários ou preço.
+- Resultado de busca atribuiu R$30/h e funcionamento em alguns dias a um Reel de @arenalesteoficial; a legenda aberta do Reel não confirmou esses valores, então eles não devem ser usados como tabela comercial sem confirmação.
+- O post oficial [do Torneio Novembro Azul, publicado em 07/11/2026](https://www.instagram.com/arenalesteoficial/reel/DfcnJl1sRr2/) confirma início às 15h, Day Use das 15h às 22h e o WhatsApp (69) 99356-6796. Esses horários são só para o evento, não a grade semanal.
+- O post oficial [do Outubro Rosa, publicado em 13/10/2026](https://www.instagram.com/arenalesteoficial/reel/Decn0CdJ5r_/) anuncia um evento na Unidade 1 em 31/10, a partir das 8h; também é horário de evento, não prova de abertura regular.
+- O post oficial de 07/11 define equipes do torneio como até 4 atletas e concede 4 camisetas por equipe. Isso diverge da regra de 4–6 participantes cadastrada no primeiro site por instrução anterior do proprietário; confirmar qual regra deve prevalecer antes de alterar o formulário.
+- Busca pública por horário no Google/Maps não encontrou ficha verificável com grade semanal das duas unidades.
+- A publicação de outra conta chamada [@arena.leste](https://www.instagram.com/arena.leste/) é geolocalizada em São José dos Campos/SP e não pertence à Arena Leste de Porto Velho. Horários e preços dessa conta foram excluídos.
+- Um resultado chamado “Arena Leste Gol” refere-se a outro local e não foi usado. Até esta consulta, não foi encontrada evidência pública confiável da grade semanal completa nem de preços atuais para as duas unidades de Porto Velho.

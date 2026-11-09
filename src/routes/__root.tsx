@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -15,6 +16,8 @@ import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { SITE } from "@/lib/site";
 
 import appCss from "../styles.css?url";
+import zipCss from "../arena-zip.css?url";
+import zipAdaptCss from "../arena-zip-adapt.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -63,7 +66,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#FFF9F2" },
+      { name: "theme-color", content: "#FFFAF5" },
       { title: "Arena Leste Multi Sports — Vôlei de praia em Porto Velho" },
       {
         name: "description",
@@ -72,6 +75,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "stylesheet", href: zipCss },
+      { rel: "stylesheet", href: zipAdaptCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
@@ -103,17 +108,25 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const hasZipLayout = ["/", "/reservar", "/torneio", "/admin"].includes(pathname);
   return (
     <QueryClientProvider client={queryClient}>
-      <a href="#conteudo" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-3">
-        Pular para o conteúdo
+      <a href="#conteudo" className="skip">
+        Ir ao conteúdo
       </a>
-      <Header />
-      <main id="conteudo">
+      {hasZipLayout ? (
         <Outlet />
-      </main>
-      <Footer />
-      <WhatsAppFloat />
+      ) : (
+        <>
+          <Header />
+          <main id="conteudo">
+            <Outlet />
+          </main>
+          <Footer />
+          <WhatsAppFloat />
+        </>
+      )}
       <Toaster />
     </QueryClientProvider>
   );

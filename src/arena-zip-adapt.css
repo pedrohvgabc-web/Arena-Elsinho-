@@ -1,0 +1,369 @@
+/* Pequenas pontes entre a marcação React/Neon e o CSS original entregue no ZIP. */
+@keyframes fadeup {
+  from {
+    opacity: 0;
+    translate: 0 1rem;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+:root {
+  --background: var(--bg);
+  --foreground: var(--tx);
+  --card: var(--sf);
+  --card-foreground: var(--tx);
+  --popover: var(--sf);
+  --popover-foreground: var(--tx);
+  --primary: var(--ac);
+  --primary-foreground: #fff;
+  --secondary: color-mix(in srgb, var(--ac) 9%, var(--sf));
+  --secondary-foreground: var(--tx);
+  --muted: color-mix(in srgb, var(--tx) 5%, var(--bg));
+  --muted-foreground: var(--mu);
+  --accent: var(--bl);
+  --accent-foreground: #fff;
+  --campaign: var(--bl);
+  --campaign-foreground: #fff;
+  --border: var(--bd);
+  --input: var(--bd);
+  --ring: var(--ac);
+}
+
+.mapblock {
+  margin-top: var(--s3);
+  border-top: 1px solid var(--bd);
+  padding-top: var(--s2);
+}
+.maphead {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--s1);
+  flex-wrap: wrap;
+}
+.maphead p,
+.mapaddress {
+  color: var(--mu);
+  margin: 0.25rem 0 0;
+}
+.mapchoices {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.mapframe {
+  display: block;
+  width: 100%;
+  min-height: 330px;
+  margin-top: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  background: var(--sf);
+}
+.maplink {
+  display: inline-block;
+  margin-top: 0.65rem;
+  color: var(--ac);
+}
+.tor-health {
+  max-width: 52ch;
+  color: var(--mu);
+  margin-top: var(--s1);
+}
+.courtselect {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: var(--s1);
+}
+.courtselect > .mono {
+  color: var(--mu);
+}
+.hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  color: var(--mu);
+  margin: 0.45rem 0;
+  line-height: 1.45;
+}
+.loading-icon {
+  flex: 0 0 auto;
+  color: var(--ac);
+}
+.booking-extra {
+  margin-top: var(--s1);
+}
+.booking-extra .full {
+  grid-column: 1 / -1;
+}
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 7rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--sf);
+  color: var(--tx);
+  font: inherit;
+  resize: vertical;
+}
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+.summaryline,
+.summarytotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.8rem;
+  border-top: 1px solid var(--bd);
+  padding-top: 0.65rem;
+  margin-top: 0.6rem;
+}
+.summaryline span,
+.summarytotal span {
+  color: var(--mu);
+}
+.summaryline b {
+  text-align: right;
+}
+.summarytotal {
+  align-items: center;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+}
+.summarytotal b {
+  font: italic 800 1.65rem/1 var(--fh);
+}
+.booking-error {
+  color: #a62116;
+  border: 1px solid #a6211640;
+  background: #a621160c;
+  padding: 0.75rem;
+  border-radius: 10px;
+}
+.booking-help {
+  color: var(--ac);
+}
+.booking-confirm-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.65rem;
+  width: 100%;
+}
+.booking-confirm-meta > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.7rem;
+  align-items: center;
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: var(--sf);
+}
+.booking-confirm-meta .mono {
+  grid-column: 1 / -1;
+}
+.booking-confirm-meta b {
+  overflow-wrap: anywhere;
+}
+.pix-note {
+  width: 100%;
+  border: 1px solid #d9902040;
+  border-radius: 14px;
+  padding: 1rem;
+  background: #d9902010;
+}
+.pix-note p {
+  color: var(--mu);
+  margin: 0.35rem 0 0.7rem;
+}
+.pix-note code {
+  display: block;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  background: var(--sf);
+  padding: 0.7rem;
+  font: 0.72rem/1.45 var(--fm);
+}
+.mapchoices .opt[aria-pressed="true"] {
+  background: var(--ac);
+  color: #fff;
+}
+.adm nav#sbn {
+  position: static;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.adm nav#sbn .sbi {
+  min-height: 46px;
+  border-radius: 12px;
+  text-decoration: none;
+}
+.adm .am {
+  animation: swap 0.45s var(--eo);
+}
+.admin-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 2.5rem;
+  margin-bottom: var(--s2);
+  padding-bottom: var(--s1);
+  border-bottom: 1px solid var(--bd);
+}
+.loginbox {
+  display: grid;
+  gap: var(--s1);
+  width: min(100%, 32rem);
+  padding: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  background: var(--sf);
+}
+.loginbox .mono {
+  margin: 0;
+}
+.login-input {
+  min-height: 48px;
+  width: 100%;
+  padding: 0 0.9rem;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--tx);
+}
+.loginbox button {
+  width: 100%;
+}
+.vTorneio .torneo-hero {
+  min-height: clamp(44rem, 90vh, 68rem);
+}
+.vTorneio .torneo-hero .big {
+  font-size: clamp(4.25rem, 18vw, 17.5rem);
+}
+.vTorneio .torneo-hero .big span {
+  white-space: nowrap;
+}
+.vTorneio .tor-countdown {
+  width: min(100%, 34rem);
+  margin-top: var(--s3);
+  padding: var(--s1);
+  border: 1px solid rgb(255 255 255 / 0.32);
+  border-radius: 18px;
+  background: rgb(13 23 31 / 0.56);
+  backdrop-filter: blur(12px);
+}
+.vTorneio .tor-countdown > .mono {
+  margin: 0 0 0.7rem;
+  color: #fff;
+}
+.vTorneio .tor-countdown .cd {
+  margin-bottom: 0;
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(255 255 255 / 0.24);
+}
+.vTorneio .tor-countdown .cd div {
+  background: rgb(255 255 255 / 0.11);
+  color: #fff;
+}
+.vTorneio .tor-countdown .cd .mono {
+  color: rgb(255 255 255 / 0.78);
+}
+.tor-info-layout,
+.registration-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: var(--s3);
+}
+.tor-info-layout .sh h2 {
+  font-size: clamp(2.7rem, 1.5rem + 5vw, 5.5rem);
+}
+.tor-info-layout .facts {
+  gap: var(--s2);
+}
+.prizes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s1);
+}
+.prize {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  min-height: 12rem;
+  padding: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  background: var(--sf);
+}
+.prize > svg {
+  color: var(--ac);
+}
+.prize > .mono {
+  color: var(--mu);
+}
+.prize strong {
+  font: italic 800 clamp(1.6rem, 1.1rem + 2vw, 2.6rem)/1 var(--fh);
+  text-transform: uppercase;
+}
+.prize p,
+.tor-note {
+  margin: 0;
+  color: var(--mu);
+}
+.prize.featured {
+  border-color: color-mix(in srgb, var(--bl) 55%, var(--bd));
+  background: color-mix(in srgb, var(--bl) 8%, var(--sf));
+}
+.tor-note {
+  margin-top: var(--s2);
+  line-height: 1.6;
+}
+.registration-grid {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+.registration-grid > div:first-child > div:not(.sh) {
+  margin-top: var(--s1);
+}
+@media (max-width: 56rem) {
+  .adm nav#sbn {
+    display: flex;
+  }
+  .tor-info-layout,
+  .registration-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 40rem) {
+  .mapframe {
+    min-height: 270px;
+  }
+  .maphead {
+    align-items: stretch;
+  }
+  .mapchoices .opt {
+    flex: 1 1 auto;
+  }
+  .summaryline,
+  .summarytotal {
+    font-size: 0.92rem;
+  }
+  .prizes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .prize {
+    min-height: auto;
+  }
+}

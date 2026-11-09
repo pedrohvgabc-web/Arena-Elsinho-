@@ -1,17 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Loader2,
-  Plus,
-  ShieldCheck,
-  Trophy,
-  Users,
-  X,
-} from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Trophy, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LazyLoopVideo } from "@/components/LazyLoopVideo";
+import { TournamentCountdown } from "@/components/TournamentCountdown";
 import { registerTournamentTeam } from "@/lib/arena.functions";
 import { SITE, TOURNAMENT, waLink } from "@/lib/site";
 
@@ -44,140 +36,160 @@ export const Route = createFileRoute("/torneio")({
 });
 
 function TournamentPage() {
+  useEffect(() => {
+    const items = document.querySelectorAll<HTMLElement>(".vTorneio [data-r]");
+    if (!("IntersectionObserver" in window)) {
+      items.forEach((item) => item.classList.add("in"));
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("in");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.08, rootMargin: "0px 0px -5% 0px" },
+    );
+    items.forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div>
-      <section className="relative isolate overflow-hidden bg-[#101216] px-4 py-14 sm:px-6 sm:py-20">
-        <div
-          className="absolute inset-0 -z-10 opacity-35"
-          style={{
-            background:
-              "radial-gradient(circle at 78% 42%, #d64c11 0, transparent 32%), linear-gradient(140deg, transparent 35%, #173d58 100%)",
-          }}
+    <main id="conteudo" className="vTorneio">
+      <nav aria-label="Navegação da Arena">
+        <div className="wrap">
+          <Link className="logo" to="/" aria-label="Arena Leste — início">
+            <img
+              src="/images/arena-leste-zip-logo.png"
+              alt="Arena Leste Multi Sports"
+              width="159"
+              height="119"
+            />
+          </Link>
+          <a className="l" href="/#unidades">
+            Unidades
+          </a>
+          <a className="l on" href="#premiacao">
+            Premiação
+          </a>
+          <a className="l" href="#inscricao">
+            Inscrição
+          </a>
+          <Link className="btn pri" to="/" hash="topo">
+            ← Início
+          </Link>
+        </div>
+      </nav>
+
+      <section className="hero torneo-hero" id="topo">
+        <LazyLoopVideo
+          src="/videos/campeonato-camera-lenta.mp4"
+          poster="/images/campeonato-zip-poster.jpg"
+          className="bgv"
         />
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_0.9fr]">
-          <div>
-            <Link
-              to="/"
-              className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-white/70 hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" /> Voltar para Arena Leste
-            </Link>
-            <p className="mt-10 inline-flex rounded-full bg-[#1877a7] px-4 py-2 text-xs font-extrabold uppercase tracking-[0.2em] text-white">
-              Saúde · esporte · conscientização
-            </p>
-            <h1 className="mt-5 font-display text-6xl font-extrabold uppercase leading-[0.82] text-white sm:text-8xl">
-              Torneio
-              <br />
-              <span className="text-[#df4f07]">Novembro</span>
-              <br />
-              Azul
-            </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/75">
-              Um dia de esporte e conscientização sobre a saúde do homem. Reúna sua equipe, dispute
-              na areia e venha fazer parte.
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <a
-                href="#inscricao"
-                className="btn-jelly inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-7 font-bold text-primary-foreground shadow-glow"
-              >
-                Quero inscrever meu time <ArrowRight className="h-4 w-4" />
-              </a>
-              <a
-                href={SITE.instagram}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-12 items-center rounded-full border border-white/25 px-6 font-semibold text-white hover:border-primary"
-              >
-                Instagram da Arena
-              </a>
+        <div className="shade" />
+        <div className="wrap">
+          <p className="mono">Arena Leste Multi Sports · Saúde · Esporte</p>
+          <h1 className="big">
+            <span>
+              <em>Novembro</em>
+            </span>
+            <span>
+              <em>Azul</em>
+            </span>
+          </h1>
+          <p className="lead">
+            Quarteto masculino na areia. Um encontro de esporte e conscientização sobre a saúde do
+            homem.
+          </p>
+          <div className="cta">
+            <a className="btn pri lg" href="#inscricao">
+              Inscreva seu time <ArrowRight size={17} />
+            </a>
+            <a className="btn lg" href={SITE.instagram} target="_blank" rel="noopener noreferrer">
+              Instagram da Arena
+            </a>
+          </div>
+          <div className="tor-countdown">
+            <p className="mono">Faltam para a primeira bola · 28/11/2026 · 15h</p>
+            <TournamentCountdown />
+          </div>
+        </div>
+      </section>
+
+      <section id="premiacao" className="sec">
+        <div className="wrap">
+          <div className="tor-info-layout">
+            <div>
+              <div className="sh" data-r>
+                <span className="mono">01 — Informações</span>
+                <h2>
+                  Seu quarteto.
+                  <br />
+                  Sua chance.
+                </h2>
+                <p>Saúde, esporte e conscientização sobre a saúde do homem. Vem participar!</p>
+              </div>
+              <div className="facts" data-r>
+                <div>
+                  <span className="mono">Categoria</span>
+                  <b>{TOURNAMENT.category}</b>
+                </div>
+                <div>
+                  <span className="mono">Data e hora</span>
+                  <b>
+                    {TOURNAMENT.dateShort} · {TOURNAMENT.time}
+                  </b>
+                </div>
+                <div>
+                  <span className="mono">Inscrição</span>
+                  <b>{TOURNAMENT.entryFee}</b>
+                </div>
+                <div>
+                  <span className="mono">Local</span>
+                  <b>{TOURNAMENT.location}</b>
+                </div>
+              </div>
+              <p className="tor-note mono">
+                Pré-inscrição gratuita neste site. A organização confirma a participação e o
+                pagamento com o capitão.
+              </p>
+            </div>
+            <div>
+              <div className="sh" data-r>
+                <span className="mono">02 — Premiação</span>
+                <h2>Jogue pela vitória.</h2>
+              </div>
+              <div className="prizes" data-r>
+                {TOURNAMENT.prizes.map((prize, index) => (
+                  <article className={`prize ${index === 0 ? "featured" : ""}`} key={prize.place}>
+                    <Trophy aria-hidden="true" />
+                    <span className="mono">{prize.place}</span>
+                    <strong>{prize.amount}</strong>
+                    <p>{prize.extra}</p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/30">
-            <img
-              src="/images/torneio-novembro-azul.webp"
-              alt="Arte promocional ilustrada do Torneio Novembro Azul da Arena Leste"
-              width={1600}
-              height={900}
-              fetchPriority="high"
-              decoding="async"
-              className="aspect-video w-full object-cover"
-            />
-          </div>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[0.8fr_1.2fr]">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">
-            Informações do torneio
-          </p>
-          <h2 className="mt-3 font-display text-4xl font-extrabold uppercase leading-[0.92] sm:text-5xl">
-            Seu quarteto
-            <br />
-            na disputa.
-          </h2>
-          <div className="mt-6 space-y-3">
-            <InfoRow label="Categoria" value={TOURNAMENT.category} />
-            <InfoRow label="Data" value={TOURNAMENT.date} />
-            <InfoRow label="Início" value={TOURNAMENT.time} />
-            <InfoRow label="Local" value={TOURNAMENT.location} />
-            <InfoRow label="Inscrição" value={TOURNAMENT.entryFee} />
-          </div>
-          <div className="mt-6 rounded-2xl border border-[#1877a7]/50 bg-[#1877a7]/10 p-5">
-            <p className="font-bold text-foreground">
-              Saúde, esporte e conscientização sobre a saúde do homem.
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Vem participar com sua equipe no Torneio Novembro Azul da Arena Leste.
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Premiação</p>
-          <h2 className="mt-3 font-display text-4xl font-extrabold uppercase sm:text-5xl">
-            Jogue pela vitória.
-          </h2>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            {TOURNAMENT.prizes.map((prize, index) => (
-              <article
-                key={prize.place}
-                className={`rounded-2xl border p-5 ${index === 0 ? "border-primary/50 bg-primary/10" : "border-border bg-card"}`}
-              >
-                <Trophy
-                  className={`h-5 w-5 ${index === 0 ? "text-primary" : "text-muted-foreground"}`}
-                />
-                <p className="mt-4 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                  {prize.place}
-                </p>
-                <p className="mt-1 font-display text-3xl font-extrabold">{prize.amount}</p>
-                <p className="mt-1 text-sm text-muted-foreground">+ {prize.extra}</p>
-              </article>
-            ))}
-          </div>
-          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-            O formulário registra uma pré-inscrição. A organização entrará em contato pelo WhatsApp
-            para confirmar a participação e orientar sobre a inscrição. Nenhum pagamento é cobrado
-            neste site.
-          </p>
-        </div>
-      </section>
-
-      <section
-        id="inscricao"
-        className="scroll-mt-20 border-y border-border bg-card/40 px-4 py-14 sm:px-6 sm:py-20"
-      >
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.7fr_1.3fr]">
+      <section id="inscricao" className="sec">
+        <div className="wrap registration-grid">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">
-              Garanta sua vaga
-            </p>
-            <h2 className="mt-3 font-display text-5xl font-extrabold uppercase leading-[0.88] sm:text-6xl">
-              Monte o time.
-              <br />
-              Vem pra areia.
-            </h2>
+            <div className="sh">
+              <span className="mono">03 — Pré-inscrição</span>
+              <h2>
+                Monte o time.
+                <br />
+                Vem pra areia.
+              </h2>
+              <p>Informe o capitão e os demais atletas do quarteto.</p>
+            </div>
             <div className="mt-6 flex items-start gap-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
               <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p>
@@ -196,16 +208,7 @@ function TournamentPage() {
           <RegistrationForm />
         </div>
       </section>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <strong className="text-right text-sm sm:text-base">{value}</strong>
-    </div>
+    </main>
   );
 }
 

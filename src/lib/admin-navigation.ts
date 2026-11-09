@@ -1,16 +1,26 @@
 import {
   Archive,
   CalendarDays,
+  ClipboardList,
+  Clock3,
   ContactRound,
   Database,
   LayoutDashboard,
-  Settings2,
+  LayoutGrid,
   Trophy,
   type LucideIcon,
 } from "lucide-react";
 
 export type AdminModuleId =
-  "overview" | "agenda" | "courts" | "tournament" | "contact" | "backup" | "legacy";
+  | "overview"
+  | "agenda"
+  | "reservations"
+  | "hours"
+  | "courts"
+  | "tournament"
+  | "contact"
+  | "backup"
+  | "legacy";
 
 export const ADMIN_MODULES: Array<{
   id: AdminModuleId;
@@ -18,10 +28,12 @@ export const ADMIN_MODULES: Array<{
   icon: LucideIcon;
 }> = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
-  { id: "agenda", label: "Agenda e reservas", icon: CalendarDays },
-  { id: "courts", label: "Quadras e horários", icon: Settings2 },
+  { id: "agenda", label: "Agenda", icon: CalendarDays },
+  { id: "reservations", label: "Reservas", icon: ClipboardList },
+  { id: "hours", label: "Horários", icon: Clock3 },
+  { id: "courts", label: "Unidades e quadras", icon: LayoutGrid },
   { id: "tournament", label: "Torneio", icon: Trophy },
   { id: "contact", label: "Contato", icon: ContactRound },
-  { id: "backup", label: "Backup", icon: Database },
+  { id: "backup", label: "Dados e backup", icon: Database },
   { id: "legacy", label: "Histórico legado", icon: Archive },
 ];

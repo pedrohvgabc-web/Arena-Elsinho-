@@ -33,6 +33,7 @@ export const TOURNAMENT = {
   date: "28 de novembro de 2026",
   dateShort: "28/11/2026",
   time: "15h",
+  countdownAt: "2026-11-28T15:00:00-04:00",
   location: "Local a confirmar com a organização",
   entryFee: "R$ 150 por equipe",
   prizes: [

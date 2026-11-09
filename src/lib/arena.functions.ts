@@ -181,6 +181,29 @@ export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
   }
 });
 
+/** Publica apenas datas cujo dia da semana tem pelo menos uma janela configurada. */
+export const getPublicBookingDates = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ unitId: z.enum(["unidade-1", "unidade-2"]) }))
+  .handler(async ({ data }) => {
+    const db = await database();
+    const rows = (await db`
+      SELECT weekday, windows FROM public.arena_weekly_hours
+      WHERE unit_id = ${data.unitId}
+    `) as unknown as Array<{ weekday: number; windows: unknown }>;
+    const openDays = new Set(
+      rows
+        .filter((row) => normalizeWindows(row.windows).length > 0)
+        .map((row) => Number(row.weekday)),
+    );
+    const today = arenaNow().date;
+    const base = new Date(`${today}T12:00:00Z`);
+    return Array.from({ length: 14 }, (_, index) => {
+      const date = new Date(base);
+      date.setUTCDate(date.getUTCDate() + index);
+      return date.toISOString().slice(0, 10);
+    }).filter((date) => openDays.has(weekdayOf(date)));
+  });
+
 /** Retorna somente ocupação (sem dados pessoais). */
 export const getAvailability = createServerFn({ method: "GET" })
   .inputValidator(
@@ -855,6 +878,48 @@ export const adminCurrentDay = createServerFn({ method: "GET" })
       INNER JOIN public.arena_spaces s ON s.id = b.space_id
       WHERE b.booking_date = ${data.date}::date AND s.unit_id IN ('unidade-1', 'unidade-2')
       ORDER BY b.start_time
+    `) as unknown as Array<BookingAdminRow & { space_name: string; unit_id: string }>;
+    return { bookings: rows };
+  });
+
+export const adminCurrentBookings = createServerFn({ method: "GET" })
+  .inputValidator(
+    z
+      .object({
+        fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .refine(({ fromDate, toDate }) => {
+        const start = Date.parse(`${fromDate}T00:00:00Z`);
+        const end = Date.parse(`${toDate}T00:00:00Z`);
+        return (
+          Number.isFinite(start) &&
+          Number.isFinite(end) &&
+          end >= start &&
+          end - start <= 90 * 86_400_000
+        );
+      }, "O período precisa ser válido e não pode ultrapassar 90 dias."),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    await db`
+      UPDATE public.bookings SET payment_status = 'expired', updated_at = now()
+      WHERE payment_status = 'pending' AND payment_method = 'pix' AND expires_at < now()
+    `;
+    const rows = (await db`
+      SELECT b.id, b.booking_code, b.group_code, b.booking_date::text AS booking_date,
+        to_char(b.start_time, 'HH24:MI:SS') AS start_time,
+        to_char(b.end_time, 'HH24:MI:SS') AS end_time,
+        b.customer_name, b.phone, b.payment_method, b.payment_status, b.amount_cents,
+        b.notes, b.space_id, b.created_at::text AS created_at,
+        s.name AS space_name, s.unit_id
+      FROM public.bookings b
+      INNER JOIN public.arena_spaces s ON s.id = b.space_id
+      WHERE s.unit_id IN ('unidade-1', 'unidade-2')
+        AND b.booking_date BETWEEN ${data.fromDate}::date AND ${data.toDate}::date
+      ORDER BY b.booking_date, b.start_time
+      LIMIT 500
     `) as unknown as Array<BookingAdminRow & { space_name: string; unit_id: string }>;
     return { bookings: rows };
   });

@@ -50,13 +50,19 @@ function initialHours(schedules: Schedule[] | undefined): DraftHours {
   return result;
 }
 
-export function ArenaSettingsAdmin() {
+export function ArenaSettingsAdmin({
+  initialTab = "courts",
+  showTabs = true,
+}: {
+  initialTab?: "courts" | "hours";
+  showTabs?: boolean;
+}) {
   const fetchSettings = useServerFn(adminArenaSettings);
   const copyHours = useServerFn(adminCopyArenaHours);
   const saveSpace = useServerFn(adminUpdateArenaSpace);
   const saveHours = useServerFn(adminUpdateArenaHours);
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"courts" | "hours">("courts");
+  const [tab, setTab] = useState<"courts" | "hours">(initialTab);
   const [selectedUnit, setSelectedUnit] = useState<UnitId>("unidade-1");
   const [spaceDrafts, setSpaceDrafts] = useState<Record<string, SpaceDraft>>({});
   const [hoursDraft, setHoursDraft] = useState<DraftHours>({ "unidade-1": {}, "unidade-2": {} });
@@ -208,7 +214,7 @@ export function ArenaSettingsAdmin() {
               id="arena-settings-heading"
               className="mt-1 font-display text-3xl font-bold uppercase"
             >
-              Quadras e horários
+              {tab === "courts" ? "Unidades e quadras" : "Horários de funcionamento"}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               Configure os valores e a grade real de cada unidade antes de liberar a reserva online.
@@ -219,30 +225,32 @@ export function ArenaSettingsAdmin() {
             <Check className="h-3.5 w-3.5" /> Somente admin
           </span>
         </div>
-        <div
-          className="mt-5 flex flex-wrap gap-2"
-          role="tablist"
-          aria-label="Configurações da Arena"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "courts"}
-            onClick={() => setTab("courts")}
-            className={`min-h-11 rounded-full px-5 text-sm font-bold transition-colors ${tab === "courts" ? "bg-primary text-primary-foreground" : "border border-border hover:border-primary/50"}`}
+        {showTabs && (
+          <div
+            className="mt-5 flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Configurações da Arena"
           >
-            Quadras e valores
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "hours"}
-            onClick={() => setTab("hours")}
-            className={`min-h-11 rounded-full px-5 text-sm font-bold transition-colors ${tab === "hours" ? "bg-primary text-primary-foreground" : "border border-border hover:border-primary/50"}`}
-          >
-            Grade semanal
-          </button>
-        </div>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "courts"}
+              onClick={() => setTab("courts")}
+              className={`min-h-11 rounded-full px-5 text-sm font-bold transition-colors ${tab === "courts" ? "bg-primary text-primary-foreground" : "border border-border hover:border-primary/50"}`}
+            >
+              Quadras e valores
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "hours"}
+              onClick={() => setTab("hours")}
+              className={`min-h-11 rounded-full px-5 text-sm font-bold transition-colors ${tab === "hours" ? "bg-primary text-primary-foreground" : "border border-border hover:border-primary/50"}`}
+            >
+              Grade semanal
+            </button>
+          </div>
+        )}
       </div>
 
       {query.isLoading ? (

@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { adminCurrentDay, adminUpdateBooking } from "@/lib/arena.functions";
+import { adminCurrentBookings, adminCurrentDay, adminUpdateBooking } from "@/lib/arena.functions";
 import { SITE } from "@/lib/site";
 import {
   arenaNow,
@@ -111,20 +111,37 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
         slots: items.map((row) => ({ start: row.start_time, end: row.end_time })),
       };
     })
-    .sort((a, b) => a.slots[0]!.start.localeCompare(b.slots[0]!.start));
+    .sort(
+      (a, b) => a.date.localeCompare(b.date) || a.slots[0]!.start.localeCompare(b.slots[0]!.start),
+    );
 }
 
-export function CurrentBookingsAdmin() {
+function formatBookingDate(iso: string) {
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" })
+    .format(new Date(`${iso}T12:00:00Z`))
+    .replace(" de ", " ");
+}
+
+export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "reservations" }) {
   const fetchCurrentDay = useServerFn(adminCurrentDay);
+  const fetchCurrentBookings = useServerFn(adminCurrentBookings);
   const updateBooking = useServerFn(adminUpdateBooking);
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => arenaNow().date);
   const [working, setWorking] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all");
+  const rangeStart = arenaNow().date;
+  const rangeEnd = shiftDate(rangeStart, 60);
   const query = useQuery({
-    queryKey: ["admin-current-day", date],
-    queryFn: () => fetchCurrentDay({ data: { date } }),
+    queryKey:
+      view === "agenda"
+        ? ["admin-current-day", date]
+        : ["admin-current-bookings", rangeStart, rangeEnd],
+    queryFn: () =>
+      view === "agenda"
+        ? fetchCurrentDay({ data: { date } })
+        : fetchCurrentBookings({ data: { fromDate: rangeStart, toDate: rangeEnd } }),
     retry: false,
     refetchInterval: 30_000,
   });
@@ -170,6 +187,7 @@ export function CurrentBookingsAdmin() {
       }
       toast.success(action === "mark_paid" ? "Reserva confirmada." : "Reserva cancelada.");
       await queryClient.invalidateQueries({ queryKey: ["admin-current-day"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-current-bookings"] });
     } catch {
       toast.error("Não foi possível atualizar esta reserva.");
     } finally {
@@ -194,54 +212,64 @@ export function CurrentBookingsAdmin() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.15em] text-primary">
-              Operação diária
+              {view === "agenda" ? "Agenda diária" : "Gestão de reservas"}
             </p>
             <h2
               id="current-bookings-heading"
               className="mt-1 font-display text-3xl font-bold uppercase"
             >
-              Reservas online
+              {view === "agenda" ? "Agenda" : "Reservas online"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Reservas das quadras atuais, separadas do arquivo legado.
+              {view === "agenda"
+                ? "Acompanhe as reservas do dia por unidade, quadra e horário."
+                : "Pesquise e filtre as reservas online dos próximos 60 dias."}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDate((current) => shiftDate(current, -1))}
-              aria-label="Dia anterior"
-              className="grid h-11 w-11 place-items-center rounded-lg border border-border hover:border-primary"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <input
-              type="date"
-              aria-label="Data das reservas"
-              value={date}
-              onChange={(event) => event.target.value && setDate(event.target.value)}
-              className="h-11 rounded-lg border border-input bg-background px-3 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => setDate((current) => shiftDate(current, 1))}
-              aria-label="Próximo dia"
-              className="grid h-11 w-11 place-items-center rounded-lg border border-border hover:border-primary"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setDate(arenaNow().date)}
-              className="min-h-11 rounded-lg border border-border px-3 text-sm font-semibold hover:border-primary"
-            >
-              Hoje
-            </button>
-          </div>
+          {view === "agenda" ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDate((current) => shiftDate(current, -1))}
+                aria-label="Dia anterior"
+                className="grid h-11 w-11 place-items-center rounded-lg border border-border hover:border-primary"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <input
+                type="date"
+                aria-label="Data das reservas"
+                value={date}
+                onChange={(event) => event.target.value && setDate(event.target.value)}
+                className="h-11 rounded-lg border border-input bg-background px-3 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setDate((current) => shiftDate(current, 1))}
+                aria-label="Próximo dia"
+                className="grid h-11 w-11 place-items-center rounded-lg border border-border hover:border-primary"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDate(arenaNow().date)}
+                className="min-h-11 rounded-lg border border-border px-3 text-sm font-semibold hover:border-primary"
+              >
+                Hoje
+              </button>
+            </div>
+          ) : (
+            <p className="font-mono text-xs text-muted-foreground">
+              {formatBookingDate(rangeStart)} — {formatBookingDate(rangeEnd)}
+            </p>
+          )}
         </div>
       </div>
       <div className="p-5 sm:p-7">
-        <p className="mb-4 text-sm font-semibold capitalize text-muted-foreground">{dateText}</p>
+        {view === "agenda" && (
+          <p className="mb-4 text-sm font-semibold capitalize text-muted-foreground">{dateText}</p>
+        )}
         {query.isLoading ? (
           <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -271,43 +299,50 @@ export function CurrentBookingsAdmin() {
                 </div>
               ))}
             </div>
-            <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_13rem]">
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Buscar reservas
-                <span className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-input bg-background px-3">
-                  <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <input
-                    type="search"
-                    value={searchText}
-                    onChange={(event) => setSearchText(event.target.value)}
-                    placeholder="Nome, telefone, código ou quadra"
-                    className="min-w-0 flex-1 bg-transparent text-sm font-normal normal-case tracking-normal outline-none"
-                  />
-                </span>
-              </label>
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Status
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as PaymentStatus | "all")}
-                  className="mt-1.5 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal"
-                >
-                  <option value="all">Todos os status</option>
-                  {Object.entries(STATUS_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            {view === "reservations" && (
+              <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_13rem]">
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Buscar reservas
+                  <span className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-input bg-background px-3">
+                    <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={searchText}
+                      onChange={(event) => setSearchText(event.target.value)}
+                      placeholder="Nome, telefone, código ou quadra"
+                      className="min-w-0 flex-1 bg-transparent text-sm font-normal normal-case tracking-normal outline-none"
+                    />
+                  </span>
+                </label>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Status
+                  <select
+                    value={statusFilter}
+                    onChange={(event) =>
+                      setStatusFilter(event.target.value as PaymentStatus | "all")
+                    }
+                    className="mt-1.5 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal"
+                  >
+                    <option value="all">Todos os status</option>
+                    {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             <p className="mb-3 text-xs text-muted-foreground" aria-live="polite">
-              Mostrando {filteredGroups.length} de {groups.length} reservas nesta data.
+              Mostrando {filteredGroups.length} de {groups.length} reservas{" "}
+              {view === "agenda" ? "nesta data" : "neste período"}.
             </p>
             {groups.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-5 py-8 text-center">
                 <Clock3 className="mx-auto h-6 w-6 text-muted-foreground" />
-                <p className="mt-3 font-semibold">Nenhuma reserva online nesta data</p>
+                <p className="mt-3 font-semibold">
+                  Nenhuma reserva online {view === "agenda" ? "nesta data" : "neste período"}
+                </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   As reservas das duas unidades aparecerão aqui depois de concluídas.
                 </p>
@@ -330,6 +365,7 @@ export function CurrentBookingsAdmin() {
                         <div>
                           <p className="font-semibold">{booking.name}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
+                            {view === "reservations" ? `${formatBookingDate(booking.date)} · ` : ""}
                             {booking.spaceName} · {formatSlotRanges(booking.slots)}
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">

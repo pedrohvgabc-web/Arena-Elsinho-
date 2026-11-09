@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -76,48 +76,65 @@ function Login() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
-    <div className="grid min-h-[70vh] place-items-center px-4">
-      <form
-        className="w-full max-w-sm rounded-2xl border border-border bg-card p-8"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setErr(null);
-          const r = await login({ data: { password: pw } }).catch(() => ({
-            ok: false,
-            error: "Falha de conexão.",
-          }));
-          setBusy(false);
-          if (r.ok) qc.invalidateQueries({ queryKey: ["admin-auth"] });
-          else setErr(r.error);
-        }}
-      >
-        <h1 className="text-3xl font-bold uppercase">Painel</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Acesso restrito à administração.</p>
-        <label htmlFor="pw" className="mt-6 block text-sm font-medium">
-          Senha
-        </label>
-        <input
-          id="pw"
-          type="password"
-          autoComplete="current-password"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          className="mt-1.5 h-12 w-full rounded-xl border border-input bg-background px-4"
-          aria-describedby={err ? "pw-err" : undefined}
-        />
-        {err && (
-          <p id="pw-err" role="alert" className="mt-3 text-sm text-destructive">
-            {err}
-          </p>
-        )}
-        <button
-          disabled={busy || !pw}
-          className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-primary font-bold text-primary-foreground disabled:opacity-50"
+    <div id="vAdm" className="res">
+      <header className="rh2">
+        <Link className="logo" to="/" aria-label="Arena Leste — início">
+          <img
+            src="/images/arena-leste-zip-logo.png"
+            alt="Arena Leste Multi Sports"
+            width="159"
+            height="119"
+          />
+        </Link>
+        <Link className="mono" to="/">
+          ← Voltar ao site
+        </Link>
+      </header>
+      <main id="conteudo" className="wrap rb">
+        <span className="mono">Acesso restrito · Administração</span>
+        <h1 className="rt">
+          Painel
+          <br />
+          <b>da Arena</b>
+        </h1>
+        <form
+          className="loginbox f"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setErr(null);
+            const r = await login({ data: { password: pw } }).catch(() => ({
+              ok: false,
+              error: "Falha de conexão.",
+            }));
+            setBusy(false);
+            if (r.ok) qc.invalidateQueries({ queryKey: ["admin-auth"] });
+            else setErr(r.error);
+          }}
         >
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />}Entrar
-        </button>
-      </form>
+          <p className="mono">Entre com sua senha de administrador.</p>
+          <label htmlFor="pw" className="mono">
+            Senha
+          </label>
+          <input
+            id="pw"
+            type="password"
+            autoComplete="current-password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            className="login-input"
+            aria-describedby={err ? "pw-err" : undefined}
+          />
+          {err && (
+            <p id="pw-err" role="alert" className="booking-error">
+              {err}
+            </p>
+          )}
+          <button disabled={busy || !pw} className="btn pri lg">
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}Entrar
+          </button>
+        </form>
+      </main>
     </div>
   );
 }
@@ -215,25 +232,18 @@ function Dashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-4xl font-bold uppercase">Painel Arena Leste</h1>
-        <button
-          onClick={async () => {
-            await logout();
-            qc.invalidateQueries({ queryKey: ["admin-auth"] });
-          }}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm"
-        >
-          <LogOut className="h-4 w-4" />
-          Sair
-        </button>
-      </div>
-      <div className="mt-7 grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start">
-        <nav
-          aria-label="Módulos administrativos"
-          className="flex gap-2 overflow-x-auto pb-2 lg:sticky lg:top-24 lg:flex-col lg:overflow-visible lg:pb-0"
-        >
+    <div id="vAdm" className="adm">
+      <aside className="sb">
+        <Link className="logo" to="/" aria-label="Voltar ao site da Arena Leste">
+          <img
+            src="/images/arena-leste-zip-logo.png"
+            alt="Arena Leste Multi Sports"
+            width="159"
+            height="119"
+          />
+        </Link>
+        <p className="mono">Painel administrativo</p>
+        <nav id="sbn" aria-label="Módulos administrativos">
           {ADMIN_MODULES.map((module) => {
             const Icon = module.icon;
             const active = activeModule === module.id;
@@ -241,24 +251,45 @@ function Dashboard() {
               <button
                 key={module.id}
                 type="button"
+                className="sbi"
                 aria-current={active ? "page" : undefined}
                 aria-controls="admin-module-content"
                 onClick={() => setActiveModule(module.id)}
-                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:w-full lg:rounded-xl ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground"}`}
               >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                {module.label}
+                <i aria-hidden="true">
+                  <Icon size={18} />
+                </i>
+                <span>{module.label}</span>
               </button>
             );
           })}
         </nav>
-
-        <div id="admin-module-content" className="min-w-0">
+        <Link className="btn" to="/">
+          ← Ver site
+        </Link>
+        <button
+          type="button"
+          onClick={async () => {
+            await logout();
+            qc.invalidateQueries({ queryKey: ["admin-auth"] });
+          }}
+          className="btn sbx"
+        >
+          <LogOut size={16} /> Sair do painel
+        </button>
+      </aside>
+      <main id="conteudo" className="am">
+        <div className="admin-topbar">
+          <span className="mono">Arena Leste · Operação online</span>
+        </div>
+        <div id="admin-module-content" className="swap">
           {activeModule === "overview" && (
             <AdminOverview onNavigate={(module) => setActiveModule(module)} />
           )}
-          {activeModule === "agenda" && <CurrentBookingsAdmin />}
-          {activeModule === "courts" && <ArenaSettingsAdmin />}
+          {activeModule === "agenda" && <CurrentBookingsAdmin view="agenda" />}
+          {activeModule === "reservations" && <CurrentBookingsAdmin view="reservations" />}
+          {activeModule === "courts" && <ArenaSettingsAdmin initialTab="courts" showTabs={false} />}
+          {activeModule === "hours" && <ArenaSettingsAdmin initialTab="hours" showTabs={false} />}
           {activeModule === "tournament" && <TournamentRegistrationsAdmin />}
           {activeModule === "backup" && <AdminDataBackup />}
           {activeModule === "contact" && (
@@ -535,7 +566,7 @@ function Dashboard() {
             </section>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
