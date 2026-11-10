@@ -563,7 +563,7 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
           INSERT INTO public.tournament_registrations (
             registration_code, submission_key, captain_name, captain_phone, team_name, athletes
           ) VALUES (
-            ${code}, ${data.submissionId}::uuid, ${data.captainName}, ${phone}, ${teamName}, ${JSON.stringify(data.athletes)}::jsonb
+            ${code}, ${data.submissionId}::uuid, ${data.captainName}, ${phone}, ${teamName}, ${db.json(data.athletes)}
           ) RETURNING id, registration_code
         `) as unknown as Array<{ id: string; registration_code: string }>;
         const row = rows[0];
@@ -873,7 +873,7 @@ export const adminUpdateArenaHours = createServerFn({ method: "POST" })
       const db = await database();
       const rows = (await db`
         INSERT INTO public.arena_weekly_hours (unit_id, weekday, windows, updated_at)
-        VALUES (${data.unitId}, ${data.weekday}, ${JSON.stringify(data.windows)}::jsonb, now())
+        VALUES (${data.unitId}, ${data.weekday}, ${db.json(data.windows)}, now())
         ON CONFLICT (unit_id, weekday) DO UPDATE
         SET windows = EXCLUDED.windows, updated_at = now()
         RETURNING unit_id, weekday
@@ -1162,7 +1162,7 @@ export const adminCopyArenaHours = createServerFn({ method: "POST" })
       for (const day of data.days) {
         await tx`
           INSERT INTO public.arena_weekly_hours (unit_id, weekday, windows, updated_at)
-          VALUES (${data.targetUnitId}, ${day.weekday}, ${JSON.stringify(day.windows)}::jsonb, now())
+          VALUES (${data.targetUnitId}, ${day.weekday}, ${db.json(day.windows)}, now())
           ON CONFLICT (unit_id, weekday) DO UPDATE
           SET windows = EXCLUDED.windows, updated_at = now()
         `;
