@@ -13,6 +13,7 @@ import {
   type OpeningWindow,
 } from "./arena-rules";
 import { tournamentRegistrationSchema } from "./tournament-schema";
+import { TOURNAMENT } from "./site";
 
 type SpaceRow = {
   id: string;
@@ -484,6 +485,17 @@ export const submitPrivacyRequest = createServerFn({ method: "POST" })
 
 /* ---------------- Pré-inscrição pública do torneio ---------------- */
 
+async function tournamentRegistrationSuccess(code: string) {
+  const { createPixCharge } = await import("./payments.server");
+  const pix = await createPixCharge({ code, amountCents: TOURNAMENT.entryFeeCents });
+  return {
+    ok: true as const,
+    code,
+    pixPayload: pix.payload,
+    pixSimulated: pix.simulated,
+  };
+}
+
 export const registerTournamentTeam = createServerFn({ method: "POST" })
   .inputValidator(tournamentRegistrationSchema)
   .handler(async ({ data }) => {
@@ -491,14 +503,14 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
     if (!phone) return { ok: false as const, error: "WhatsApp inválido. Informe DDD e número." };
 
     // Honeypot: responde com sucesso sem gravar dados para não informar ao bot que foi detectado.
-    if (data.website.trim()) return { ok: true as const, code: `AL26-${randomCode(8)}` };
+    if (data.website.trim()) return tournamentRegistrationSuccess(`AL26-${randomCode(8)}`);
 
     const db = await database();
     const existing = (await db`
       SELECT registration_code FROM public.tournament_registrations
       WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
     `) as unknown as Array<{ registration_code: string }>;
-    if (existing[0]) return { ok: true as const, code: String(existing[0].registration_code) };
+    if (existing[0]) return tournamentRegistrationSuccess(String(existing[0].registration_code));
 
     const phoneFingerprint = await sha256(`${process.env["DATABASE_URL"] ?? ""}:${phone}`);
     const phoneLimitKey = `tournament-phone:${phoneFingerprint}`;
@@ -572,14 +584,14 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
         };
       }
       if (!saved.code) throw new Error("REGISTRATION_CODE_MISSING");
-      return { ok: true as const, code: saved.code };
+      return tournamentRegistrationSuccess(saved.code);
     } catch (error) {
       if (errorCode(error) === "23505") {
         const retry = (await db`
           SELECT registration_code FROM public.tournament_registrations
           WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
         `) as unknown as Array<{ registration_code: string }>;
-        if (retry[0]) return { ok: true as const, code: String(retry[0].registration_code) };
+        if (retry[0]) return tournamentRegistrationSuccess(String(retry[0].registration_code));
       }
       const constraint = errorConstraint(error);
       console.error(

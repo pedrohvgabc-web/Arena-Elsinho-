@@ -27,7 +27,7 @@
 
 - [ ] **Liberar a agenda ao público somente após configuração** — inserir no painel os preços das quadras e os horários reais de cada unidade; a migração não preenche horário ou preço presumido.
 - [ ] **Confirmar dados locais** — validar com a Arena o endereço/pino da Unidade 2, o local do torneio e qualquer alteração de contato antes de publicar informação diferente da fonte oficial.
-- [ ] **Configurar o Pix do torneio** — receber a chave Pix oficial, nome do beneficiário e orientação para envio/validação do comprovante; até essa confirmação, não mostrar QR/código de pagamento nem afirmar que houve cobrança real.
+- [x] **Etapa Pix demonstrativa no sucesso da pré-inscrição** — mostrar o valor de R$ 150 por equipe e um payload copiável retornado pelo provedor demonstrativo; avisar que o código não é Pix bancário, não movimenta dinheiro e não confirma pagamento; manter confirmação dos próximos passos com a organização pelo WhatsApp.
 
 ## Correções operacionais desta solicitação
 

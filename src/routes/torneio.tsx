@@ -1,6 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Trophy, Users, X } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Copy,
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Trophy,
+  Users,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { LazyLoopVideo } from "@/components/LazyLoopVideo";
 import { TournamentCountdown } from "@/components/TournamentCountdown";
@@ -222,6 +232,9 @@ function RegistrationForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registrationCode, setRegistrationCode] = useState<string | null>(null);
+  const [pixPayload, setPixPayload] = useState<string | null>(null);
+  const [pixSimulated, setPixSimulated] = useState(false);
+  const [pixCopied, setPixCopied] = useState(false);
   const [submissionId] = useState(() => globalThis.crypto.randomUUID());
 
   function updateMember(index: number, value: string) {
@@ -252,10 +265,22 @@ function RegistrationForm() {
         return;
       }
       setRegistrationCode(result.code);
+      setPixPayload(result.pixPayload);
+      setPixSimulated(result.pixSimulated);
     } catch {
       setError("Não foi possível enviar agora. Tente novamente em instantes.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function copyDemoPix() {
+    if (!pixPayload) return;
+    try {
+      await navigator.clipboard.writeText(pixPayload);
+      setPixCopied(true);
+    } catch {
+      setPixCopied(false);
     }
   }
 
@@ -273,6 +298,30 @@ function RegistrationForm() {
           Anote seu código <strong className="text-foreground">{registrationCode}</strong>. A equipe
           vai confirmar a participação e orientar o pagamento pelo WhatsApp.
         </p>
+        {pixSimulated && pixPayload && (
+          <section className="pix-note mt-6" aria-labelledby="tournament-pix-heading">
+            <strong
+              id="tournament-pix-heading"
+              className="font-display text-lg font-bold uppercase"
+            >
+              Pix demonstrativo · {TOURNAMENT.entryFee}
+            </strong>
+            <p className="text-sm">
+              Apenas uma simulação visual: este código não é um Pix bancário válido, não transfere
+              dinheiro e não confirma pagamento. A pré-inscrição foi recebida; a organização
+              orientará os próximos passos.
+            </p>
+            <code>{pixPayload}</code>
+            <button
+              type="button"
+              onClick={copyDemoPix}
+              className="btn-jelly mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-primary/30 bg-card px-5 text-sm font-bold text-primary"
+            >
+              {pixCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {pixCopied ? "Código demonstrativo copiado" : "Copiar código demonstrativo"}
+            </button>
+          </section>
+        )}
         <a
           href={waLink(message)}
           target="_blank"

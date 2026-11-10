@@ -37,6 +37,7 @@ export const TOURNAMENT = {
   time: "15h",
   countdownAt: "2026-11-28T15:00:00-04:00",
   location: "Local a confirmar com a organização",
+  entryFeeCents: 15000,
   entryFee: "R$ 150 por equipe",
   prizes: [
     { place: "1º lugar", amount: "R$ 800", extra: "troféu e medalhas" },
