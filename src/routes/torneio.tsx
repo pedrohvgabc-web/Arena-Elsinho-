@@ -90,7 +90,7 @@ function TournamentPage() {
 
       <section className="hero torneo-hero" id="topo">
         <LazyLoopVideo
-          src="/videos/campeonato-camera-lenta.mp4"
+          src="/videos/campeonato-camera-lenta-1080p60-v1.mp4"
           poster="/images/campeonato-zip-poster.jpg"
           className="bgv"
         />
