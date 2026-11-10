@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tournamentRegistrationSchema } from "./tournament-schema";
+import { cleanTournamentRoster } from "./tournament-roster";
 
 const registration = (overrides: Record<string, unknown> = {}) => ({
   captainName: "João Silva",
@@ -15,6 +16,11 @@ const registration = (overrides: Record<string, unknown> = {}) => ({
 describe("tournamentRegistrationSchema", () => {
   it("accepts a quarteto (capitão + três atletas)", () => {
     expect(tournamentRegistrationSchema.safeParse(registration()).success).toBe(true);
+  });
+
+  it("ignores blank optional roster fields without dropping required players", () => {
+    const athletes = cleanTournamentRoster(["Pedro Souza", "Rafael Lima", "Bruno Santos", ""]);
+    expect(tournamentRegistrationSchema.safeParse(registration({ athletes })).success).toBe(true);
   });
 
   it("accepts up to six people including the captain", () => {

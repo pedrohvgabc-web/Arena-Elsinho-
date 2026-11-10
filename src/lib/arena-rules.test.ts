@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { validateSlot, slotsFor, normalizePhone, type OpeningWindow } from "./arena-rules";
+import {
+  validateSlot,
+  slotsFor,
+  normalizePhone,
+  suggestOpeningWindow,
+  validateOpeningWindows,
+  type OpeningWindow,
+} from "./arena-rules";
 
 // 2026-10-24 é sábado. Agora = sexta-feira, 23/10/2026, 09:00 em Porto Velho.
 const NOW = new Date("2026-10-23T13:00:00Z");
@@ -10,6 +17,22 @@ const TUESDAY: OpeningWindow[] = [
 ];
 
 describe("regras de funcionamento configuráveis", () => {
+  it("sugere um segundo intervalo válido, sem sobrepor o padrão 17h–23h", () => {
+    const suggestion = suggestOpeningWindow([{ start: "17:00", end: "23:00" }]);
+    expect(suggestion).toEqual({ start: "08:00", end: "12:00" });
+    expect(validateOpeningWindows([{ start: "17:00", end: "23:00" }, suggestion!])).toBeNull();
+  });
+  it("rejeita intervalos sobrepostos antes de salvar", () => {
+    expect(
+      validateOpeningWindows([
+        { start: "14:00", end: "23:00" },
+        { start: "17:00", end: "23:00" },
+      ]),
+    ).toBe("Os intervalos não podem se sobrepor.");
+  });
+  it("não sugere uma segunda janela se não houver um espaço de uma hora", () => {
+    expect(suggestOpeningWindow([{ start: "08:00", end: "23:00" }])).toBeNull();
+  });
   it("não gera slots para uma unidade fechada", () =>
     expect(slotsFor("2026-10-25", []).length).toBe(0));
   it("bloqueia data passada", () =>

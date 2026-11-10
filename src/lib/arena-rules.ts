@@ -26,6 +26,52 @@ export const toMin = (time: string) => {
 export const toHHMM = (minutes: number) =>
   `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
+export function validateOpeningWindows(windows: OpeningWindow[]) {
+  if (windows.length > 2) return "Defina no máximo dois intervalos por dia.";
+  const ordered = [...windows].sort((a, b) => toMin(a.start) - toMin(b.start));
+  for (const [index, window] of ordered.entries()) {
+    if (!validTime(window.start) || !validTime(window.end)) {
+      return "Informe horários de abertura e fechamento válidos.";
+    }
+    if (toMin(window.end) <= toMin(window.start)) {
+      return "O fechamento deve ser depois da abertura.";
+    }
+    const previous = ordered[index - 1];
+    if (previous && toMin(window.start) < toMin(previous.end)) {
+      return "Os intervalos não podem se sobrepor.";
+    }
+  }
+  return null;
+}
+
+/** Sugere um intervalo de pelo menos uma hora que não se sobrepõe ao existente. */
+export function suggestOpeningWindow(windows: OpeningWindow[]): OpeningWindow | null {
+  const ordered = windows
+    .filter((window) => validTime(window.start) && validTime(window.end))
+    .filter((window) => toMin(window.end) > toMin(window.start))
+    .sort((a, b) => toMin(a.start) - toMin(b.start));
+  let cursor = 8 * 60;
+  const dayEnd = 23 * 60;
+  const maxSuggestionMinutes = 4 * 60;
+
+  for (const window of ordered) {
+    const start = toMin(window.start);
+    const gapEnd = Math.min(start, dayEnd);
+    if (gapEnd - cursor >= 60) {
+      return {
+        start: toHHMM(cursor),
+        end: toHHMM(Math.min(gapEnd, cursor + maxSuggestionMinutes)),
+      };
+    }
+    cursor = Math.max(cursor, toMin(window.end));
+  }
+
+  if (dayEnd - cursor >= 60) {
+    return { start: toHHMM(cursor), end: toHHMM(Math.min(dayEnd, cursor + maxSuggestionMinutes)) };
+  }
+  return null;
+}
+
 export function weekdayOf(dateISO: string) {
   const [year = 1970, month = 1, day = 1] = dateISO.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();

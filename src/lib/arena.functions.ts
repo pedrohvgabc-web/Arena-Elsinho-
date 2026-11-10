@@ -9,6 +9,7 @@ import {
   MAX_SLOTS,
   weekdayOf,
   toMin,
+  validateOpeningWindows,
   type OpeningWindow,
 } from "./arena-rules";
 import { tournamentRegistrationSchema } from "./tournament-schema";
@@ -94,6 +95,14 @@ function randomCode(len: number, alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789") 
 }
 function errorCode(error: unknown) {
   return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
+}
+function errorConstraint(error: unknown) {
+  if (!error || typeof error !== "object") return undefined;
+  const fields = error as Record<string, unknown>;
+  const constraint = fields["constraint_name"] ?? fields["constraint"] ?? fields["constraintName"];
+  return typeof constraint === "string" && /^[a-z0-9_]+$/i.test(constraint)
+    ? constraint
+    : undefined;
 }
 
 function normalizeWindows(value: unknown): OpeningWindow[] {
@@ -492,13 +501,7 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
     if (existing[0]) return { ok: true as const, code: String(existing[0].registration_code) };
 
     const phoneFingerprint = await sha256(`${process.env["DATABASE_URL"] ?? ""}:${phone}`);
-    if (!(await rateLimit(`tournament-phone:${phoneFingerprint}`, 1, 3600))) {
-      return {
-        ok: false as const,
-        error:
-          "Este WhatsApp já tem uma pré-inscrição recente. Aguarde uma hora ou fale com a Arena.",
-      };
-    }
+    const phoneLimitKey = `tournament-phone:${phoneFingerprint}`;
     if (!(await rateLimit(`tournament:${await clientKey()}`, 8, 3600))) {
       return {
         ok: false as const,
@@ -515,7 +518,34 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
           WHERE submission_key = ${data.submissionId}::uuid LIMIT 1
         `) as unknown as Array<{ registration_code: string }>;
         if (previous[0])
-          return { code: String(previous[0].registration_code), id: null as string | null };
+          return {
+            code: String(previous[0].registration_code),
+            id: null as string | null,
+            limited: false as const,
+          };
+
+        const phoneAttempt = (await tx`
+          WITH attempt AS (
+            INSERT INTO public.rate_limits (key, count, window_start)
+            VALUES (${phoneLimitKey}, 1, now())
+            ON CONFLICT (key) DO UPDATE SET
+              count = CASE
+                WHEN public.rate_limits.window_start <= now() - make_interval(secs => 3600) THEN 1
+                ELSE public.rate_limits.count + 1
+              END,
+              window_start = CASE
+                WHEN public.rate_limits.window_start <= now() - make_interval(secs => 3600) THEN now()
+                ELSE public.rate_limits.window_start
+              END
+            WHERE public.rate_limits.window_start <= now() - make_interval(secs => 3600)
+               OR public.rate_limits.count < 1
+            RETURNING 1
+          )
+          SELECT EXISTS (SELECT 1 FROM attempt) AS allowed
+        `) as unknown as Array<{ allowed: boolean }>;
+        if (!phoneAttempt[0]?.allowed) {
+          return { code: null, id: null, limited: true as const };
+        }
 
         const rows = (await tx`
           INSERT INTO public.tournament_registrations (
@@ -532,8 +562,16 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
           INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
           VALUES ('public', 'tournament.registration.create', 'tournament_registration', ${row.id}, ${JSON.stringify({ code: row.registration_code, event: "novembro-azul-2026" })}::jsonb)
         `;
-        return { code: String(row.registration_code), id: String(row.id) };
+        return { code: String(row.registration_code), id: String(row.id), limited: false as const };
       });
+      if (saved.limited) {
+        return {
+          ok: false as const,
+          error:
+            "Este WhatsApp já tem uma pré-inscrição recente. Aguarde uma hora ou fale com a Arena.",
+        };
+      }
+      if (!saved.code) throw new Error("REGISTRATION_CODE_MISSING");
       return { ok: true as const, code: saved.code };
     } catch (error) {
       if (errorCode(error) === "23505") {
@@ -543,10 +581,27 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
         `) as unknown as Array<{ registration_code: string }>;
         if (retry[0]) return { ok: true as const, code: String(retry[0].registration_code) };
       }
-      console.error("tournament registration failed", errorCode(error));
+      const constraint = errorConstraint(error);
+      console.error(
+        "tournament registration failed",
+        errorCode(error) ?? "unknown",
+        constraint ?? "constraint_unknown",
+      );
+      const constraintMessages: Record<string, string> = {
+        tournament_registrations_captain_phone_check:
+          "Confira o WhatsApp do capitão e informe DDD e número (10 ou 11 dígitos).",
+        tournament_registrations_captain_name_check:
+          "Confira o nome do capitão (de 3 a 80 caracteres).",
+        tournament_registrations_team_name_check:
+          "O nome da equipe deve ter no máximo 80 caracteres.",
+        tournament_registrations_athletes_check:
+          "Informe de 3 a 5 atletas além do capitão, com nome válido para cada pessoa.",
+      };
       return {
         ok: false as const,
-        error: "Não foi possível registrar agora. Tente novamente ou fale com a Arena.",
+        error:
+          constraintMessages[constraint ?? ""] ??
+          "Não foi possível registrar agora. Tente novamente ou fale com a Arena.",
       };
     }
   });
@@ -788,23 +843,13 @@ const weeklyHoursSchema = z
       .max(2),
   })
   .superRefine((schedule, ctx) => {
-    const ordered = [...schedule.windows].sort((a, b) => a.start.localeCompare(b.start));
-    for (const [index, window] of ordered.entries()) {
-      if (toMin(window.end) <= toMin(window.start)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["windows", index],
-          message: "O fechamento deve ser depois da abertura.",
-        });
-      }
-      const previous = ordered[index - 1];
-      if (previous && toMin(window.start) < toMin(previous.end)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["windows", index],
-          message: "Os intervalos não podem se sobrepor.",
-        });
-      }
+    const error = validateOpeningWindows(schedule.windows);
+    if (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["windows"],
+        message: error,
+      });
     }
   });
 

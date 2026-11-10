@@ -10,7 +10,11 @@ import {
   adminUpdateArenaHours,
   adminUpdateArenaSpace,
 } from "@/lib/arena.functions";
-import type { OpeningWindow } from "@/lib/arena-rules";
+import {
+  suggestOpeningWindow,
+  validateOpeningWindows,
+  type OpeningWindow,
+} from "@/lib/arena-rules";
 
 type UnitId = "unidade-1" | "unidade-2";
 type Space = {
@@ -139,13 +143,19 @@ export function ArenaSettingsAdmin({
 
   async function saveDay(weekday: number) {
     const key = `${selectedUnit}:${weekday}`;
+    const windows = hoursDraft[selectedUnit][weekday] ?? [];
+    const validationError = validateOpeningWindows(windows);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
     setSavingDay(key);
     try {
       const result = await saveHours({
         data: {
           unitId: selectedUnit,
           weekday,
-          windows: hoursDraft[selectedUnit][weekday] ?? [],
+          windows,
         },
       });
       if (!result.ok) {
@@ -153,6 +163,7 @@ export function ArenaSettingsAdmin({
         return;
       }
       toast.success(`Horários de ${WEEKDAYS[weekday]?.toLowerCase()} salvos.`);
+      await queryClient.invalidateQueries({ queryKey: ["admin-arena-settings"] });
     } catch {
       toast.error("Não foi possível salvar os horários.");
     } finally {
@@ -416,6 +427,9 @@ export function ArenaSettingsAdmin({
           <div className="grid gap-3 lg:grid-cols-2">
             {WEEKDAYS.map((day, weekday) => {
               const windows = hoursDraft[selectedUnit][weekday] ?? [];
+              const suggestedWindow = windows.length
+                ? suggestOpeningWindow(windows)
+                : { start: "17:00", end: "23:00" };
               const saving = savingDay === `${selectedUnit}:${weekday}`;
               return (
                 <article
@@ -489,22 +503,20 @@ export function ArenaSettingsAdmin({
                         </button>
                       </div>
                     ))}
-                    {windows.length < 2 && (
+                    {windows.length < 2 && suggestedWindow && (
                       <button
                         type="button"
-                        onClick={() =>
-                          updateWindows(weekday, [
-                            ...windows,
-                            {
-                              start: windows.length ? "14:00" : "17:00",
-                              end: windows.length ? "23:00" : "23:00",
-                            },
-                          ])
-                        }
+                        onClick={() => updateWindows(weekday, [...windows, suggestedWindow])}
                         className="inline-flex min-h-10 items-center gap-2 rounded-full border border-dashed border-border px-4 text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary"
                       >
                         <Plus className="h-4 w-4" /> Adicionar intervalo
                       </button>
+                    )}
+                    {windows.length === 1 && !suggestedWindow && (
+                      <p className="text-xs text-muted-foreground">
+                        Para adicionar outro intervalo, deixe ao menos uma hora livre entre as
+                        faixas existentes.
+                      </p>
                     )}
                     <div className="pt-2">
                       <button

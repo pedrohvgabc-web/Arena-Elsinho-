@@ -27,3 +27,9 @@
 
 - [ ] **Liberar a agenda ao público somente após configuração** — inserir no painel os preços das quadras e os horários reais de cada unidade; a migração não preenche horário ou preço presumido.
 - [ ] **Confirmar dados locais** — validar com a Arena o endereço/pino da Unidade 2, o local do torneio e qualquer alteração de contato antes de publicar informação diferente da fonte oficial.
+- [ ] **Configurar o Pix do torneio** — receber a chave Pix oficial, nome do beneficiário e orientação para envio/validação do comprovante; até essa confirmação, não mostrar QR/código de pagamento nem afirmar que houve cobrança real.
+
+## Correções operacionais desta solicitação
+
+- [x] **Salvar horários semanais com retorno claro** — sugerir o segundo intervalo sem sobrepor a faixa existente, validar intervalos no cliente e no servidor com a mesma regra, explicar conflitos antes do envio e recarregar os dados do Neon após salvar.
+- [x] **Tornar a pré-inscrição repetível em caso de falha** — não consumir o limite por telefone antes de a inscrição e a auditoria gravarem com sucesso; não enviar campos de atletas opcionais vazios; manter log técnico limitado a código/constraint, sem dados pessoais.

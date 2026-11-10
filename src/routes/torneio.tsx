@@ -6,6 +6,7 @@ import { LazyLoopVideo } from "@/components/LazyLoopVideo";
 import { TournamentCountdown } from "@/components/TournamentCountdown";
 import { registerTournamentTeam } from "@/lib/arena.functions";
 import { SITE, TOURNAMENT, waLink } from "@/lib/site";
+import { cleanTournamentRoster } from "@/lib/tournament-roster";
 
 export const Route = createFileRoute("/torneio")({
   head: () => ({
@@ -240,7 +241,7 @@ function RegistrationForm() {
           captainName: String(form.get("captainName") ?? ""),
           phone: String(form.get("phone") ?? ""),
           teamName: String(form.get("teamName") ?? ""),
-          athletes: members,
+          athletes: cleanTournamentRoster(members),
           consent: form.get("consent") === "on",
           website: String(form.get("website") ?? ""),
           submissionId,
