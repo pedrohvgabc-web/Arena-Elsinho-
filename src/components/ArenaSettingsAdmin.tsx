@@ -163,9 +163,13 @@ export function ArenaSettingsAdmin({
         return;
       }
       toast.success(`Horários de ${WEEKDAYS[weekday]?.toLowerCase()} salvos.`);
-      await queryClient.invalidateQueries({ queryKey: ["admin-arena-settings"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-arena-settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-dates", selectedUnit] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-availability"] }),
+      ]);
     } catch {
-      toast.error("Não foi possível salvar os horários.");
+      toast.error("Não foi possível falar com o servidor. Confira a conexão e tente novamente.");
     } finally {
       setSavingDay(null);
     }
@@ -200,6 +204,11 @@ export function ArenaSettingsAdmin({
       );
       setHoursDraft((current) => ({ ...current, [targetUnitId]: cloned }));
       toast.success(`Grade copiada para ${targetLabel}.`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-arena-settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-dates", targetUnitId] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-availability"] }),
+      ]);
     } catch {
       toast.error("Não foi possível copiar a grade semanal.");
     } finally {

@@ -3,7 +3,7 @@ import { z } from "zod";
 const personName = z
   .string()
   .trim()
-  .min(3, "Informe nome e sobrenome.")
+  .min(3, "Informe o primeiro nome, com pelo menos três letras.")
   .max(80, "O nome deve ter até 80 caracteres.")
   .regex(/^[\p{L}\p{M}][\p{L}\p{M}\s.'’-]*$/u, "Use apenas um nome válido.");
 
@@ -14,8 +14,7 @@ export const tournamentRegistrationSchema = z
     teamName: z.string().trim().max(80).optional().default(""),
     athletes: z
       .array(personName)
-      .min(3, "A equipe precisa de pelo menos quatro atletas contando o capitão.")
-      .max(5, "O limite é seis atletas contando o capitão."),
+      .length(3, "Informe o primeiro nome dos outros três integrantes da equipe."),
     consent: z.boolean().refine((value) => value, {
       message: "É necessário aceitar o uso dos dados para organizar o torneio.",
     }),

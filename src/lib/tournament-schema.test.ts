@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { tournamentRegistrationSchema } from "./tournament-schema";
-import { cleanTournamentRoster } from "./tournament-roster";
-
 const registration = (overrides: Record<string, unknown> = {}) => ({
-  captainName: "João Silva",
+  captainName: "João",
   phone: "(69) 99356-6796",
   teamName: "Areia Forte 69",
-  athletes: ["Pedro Souza", "Rafael Lima", "Bruno Santos"],
+  athletes: ["Pedro", "Rafael", "Bruno"],
   consent: true,
   website: "",
   submissionId: "d61a0c95-d3d8-4b0c-9e85-6ea7bd4fb646",
@@ -14,45 +12,26 @@ const registration = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("tournamentRegistrationSchema", () => {
-  it("accepts a quarteto (capitão + três atletas)", () => {
+  it("accepts exactly four people using first names only", () => {
     expect(tournamentRegistrationSchema.safeParse(registration()).success).toBe(true);
   });
 
-  it("ignores blank optional roster fields without dropping required players", () => {
-    const athletes = cleanTournamentRoster(["Pedro Souza", "Rafael Lima", "Bruno Santos", ""]);
-    expect(tournamentRegistrationSchema.safeParse(registration({ athletes })).success).toBe(true);
-  });
-
-  it("accepts up to six people including the captain", () => {
-    const athletes = ["Pedro Souza", "Rafael Lima", "Bruno Santos", "Caio Alves", "Lucas Nunes"];
-    expect(tournamentRegistrationSchema.safeParse(registration({ athletes })).success).toBe(true);
-  });
-
-  it("rejects a team with fewer than four people total", () => {
+  it("rejects fewer than four people total", () => {
     expect(
-      tournamentRegistrationSchema.safeParse(
-        registration({ athletes: ["Pedro Souza", "Rafael Lima"] }),
-      ).success,
+      tournamentRegistrationSchema.safeParse(registration({ athletes: ["Pedro", "Rafael"] }))
+        .success,
     ).toBe(false);
   });
 
-  it("rejects a team larger than six people total", () => {
-    const athletes = [
-      "Pedro Souza",
-      "Rafael Lima",
-      "Bruno Santos",
-      "Caio Alves",
-      "Lucas Nunes",
-      "Mateus Costa",
-    ];
+  it("rejects a fifth person instead of silently accepting a larger team", () => {
+    const athletes = ["Pedro", "Rafael", "Bruno", "Caio"];
     expect(tournamentRegistrationSchema.safeParse(registration({ athletes })).success).toBe(false);
   });
 
   it("rejects duplicate names, including accent-insensitive duplicates", () => {
     expect(
-      tournamentRegistrationSchema.safeParse(
-        registration({ athletes: ["Pedro Souza", "Rafael Lima", "Joao Silva"] }),
-      ).success,
+      tournamentRegistrationSchema.safeParse(registration({ athletes: ["João", "Rafael", "Joao"] }))
+        .success,
     ).toBe(false);
   });
 
@@ -65,7 +44,7 @@ describe("tournamentRegistrationSchema", () => {
   it("rejects markup in athlete names", () => {
     expect(
       tournamentRegistrationSchema.safeParse(
-        registration({ athletes: ["<script>", "Rafael Lima", "Bruno Santos"] }),
+        registration({ athletes: ["<script>", "Rafael", "Bruno"] }),
       ).success,
     ).toBe(false);
   });

@@ -1,16 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  ArrowRight,
-  Check,
-  Copy,
-  Loader2,
-  Plus,
-  ShieldCheck,
-  Trophy,
-  Users,
-  X,
-} from "lucide-react";
+import { ArrowRight, Check, Copy, Loader2, ShieldCheck, Trophy, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { LazyLoopVideo } from "@/components/LazyLoopVideo";
 import { TournamentCountdown } from "@/components/TournamentCountdown";
@@ -202,13 +192,13 @@ function TournamentPage() {
                 <br />
                 Vem pra areia.
               </h2>
-              <p>Informe o capitão e os demais atletas do quarteto.</p>
+              <p>Informe o primeiro nome do capitão e dos três integrantes do quarteto.</p>
             </div>
             <div className="mt-6 flex items-start gap-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
               <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p>
-                <strong className="text-foreground">Quarteto masculino:</strong> capitão e mais 3 a
-                5 atletas. O limite é de 6 pessoas contando o capitão.
+                <strong className="text-foreground">Quarteto masculino:</strong> são quatro pessoas
+                no total. Basta informar o primeiro nome de cada integrante.
               </p>
             </div>
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
@@ -338,15 +328,15 @@ function RegistrationForm() {
     <form onSubmit={onSubmit} className="rounded-3xl border border-border bg-background p-5 sm:p-8">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-semibold sm:col-span-2">
-          Nome do capitão
+          Primeiro nome do capitão
           <input
             name="captainName"
             required
             minLength={3}
             maxLength={80}
-            autoComplete="name"
+            autoComplete="given-name"
             className="mt-1.5 h-12 w-full rounded-xl border border-input bg-card px-4 font-normal"
-            placeholder="Nome e sobrenome"
+            placeholder="Primeiro nome"
           />
         </label>
         <label className="text-sm font-semibold">
@@ -375,51 +365,29 @@ function RegistrationForm() {
 
       <fieldset className="mt-7">
         <legend className="font-display text-xl font-bold uppercase">
-          Atletas além do capitão{" "}
+          Três integrantes além do capitão{" "}
           <span className="font-sans text-xs font-normal normal-case text-muted-foreground">
-            (3 obrigatórios, até 5)
+            (quarteto completo: 4 pessoas no total)
           </span>
         </legend>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {members.map((member, index) => (
             <label className="text-sm font-semibold" key={index}>
-              Integrante {index + 2}
-              {index > 2 ? " (opcional)" : ""}
+              Primeiro nome · integrante {index + 2}
               <span className="relative mt-1.5 block">
                 <input
                   value={member}
                   onChange={(event) => updateMember(index, event.target.value)}
-                  required={index < 3}
+                  required
                   minLength={3}
                   maxLength={80}
                   className="h-12 w-full rounded-xl border border-input bg-card px-4 pr-12 font-normal"
-                  placeholder="Nome e sobrenome"
+                  placeholder="Primeiro nome"
                 />
-                {index > 2 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMembers((current) => current.filter((_, position) => position !== index))
-                    }
-                    className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={`Remover integrante ${index + 2}`}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
               </span>
             </label>
           ))}
         </div>
-        {members.length < 5 && (
-          <button
-            type="button"
-            onClick={() => setMembers((current) => [...current, ""])}
-            className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:border-primary hover:text-primary"
-          >
-            <Plus className="h-4 w-4" /> Adicionar atleta opcional
-          </button>
-        )}
       </fieldset>
 
       <label className="mt-6 flex items-start gap-3 text-sm text-muted-foreground">

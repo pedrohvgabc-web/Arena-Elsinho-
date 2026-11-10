@@ -10,7 +10,7 @@ import {
   getPublicBookingDates,
   getSpaces,
 } from "@/lib/arena.functions";
-import { ARENA_TZ, arenaNow, formatBRL, type PaymentMethod } from "@/lib/arena-rules";
+import { ARENA_TZ, arenaNow, formatBRL, MAX_SLOTS, type PaymentMethod } from "@/lib/arena-rules";
 
 type UnitId = "unidade-1" | "unidade-2";
 type Space = {
@@ -114,7 +114,7 @@ function Reservar() {
   const [unitId, setUnitId] = useState<UnitId>(search.unit ?? "unidade-1");
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
-  const [start, setStart] = useState<string | null>(null);
+  const [starts, setStarts] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [idempotencyKey, setIdempotencyKey] = useState(() => globalThis.crypto.randomUUID());
   const [busy, setBusy] = useState(false);
@@ -155,10 +155,24 @@ function Reservar() {
     refetchInterval: 30_000,
     staleTime: 0,
   });
-  const slots = (availabilityQuery.data ?? []) as TimeSlot[];
-  const selectedSlot = slots.find((slot) => slot.start === start && slot.status === "available");
+  const slots = useMemo(
+    () => (availabilityQuery.data ?? []) as TimeSlot[],
+    [availabilityQuery.data],
+  );
+  const selectedSlots = slots.filter(
+    (slot) => starts.includes(slot.start) && slot.status === "available",
+  );
+  useEffect(() => {
+    const available = new Set(
+      slots.filter((slot) => slot.status === "available").map((slot) => slot.start),
+    );
+    setStarts((current) => {
+      const next = current.filter((value) => available.has(value));
+      return next.length === current.length ? current : next;
+    });
+  }, [slots]);
   const unit = SITE.units.find((item) => item.id === unitId)!;
-  const totalCents = selectedSpace && selectedSlot ? selectedSpace.price_cents : 0;
+  const totalCents = selectedSpace ? selectedSpace.price_cents * selectedSlots.length : 0;
 
   function resetIdempotency() {
     setIdempotencyKey(globalThis.crypto.randomUUID());
@@ -169,29 +183,37 @@ function Reservar() {
     setUnitId(nextUnit);
     setSpaceId(null);
     setDate(null);
-    setStart(null);
+    setStarts([]);
     resetIdempotency();
   }
   function chooseCourt(id: string) {
     if (id === spaceId) return;
     setSpaceId(id);
     setDate(null);
-    setStart(null);
+    setStarts([]);
     resetIdempotency();
   }
   function chooseDate(nextDate: string) {
     setDate(nextDate);
-    setStart(null);
+    setStarts([]);
     resetIdempotency();
   }
   function chooseTime(nextStart: string) {
-    setStart(nextStart);
+    const selectedStarts = selectedSlots.map((slot) => slot.start);
+    if (selectedStarts.includes(nextStart)) {
+      setStarts(selectedStarts.filter((value) => value !== nextStart));
+    } else if (selectedStarts.length >= MAX_SLOTS) {
+      setError(`Você pode selecionar até ${MAX_SLOTS} horários por reserva.`);
+      return;
+    } else {
+      setStarts([...selectedStarts, nextStart].sort());
+    }
     resetIdempotency();
   }
 
   async function finishBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSpace || !date || !selectedSlot) return;
+    if (!selectedSpace || !date || !selectedSlots.length) return;
     setBusy(true);
     setError(null);
     const form = new FormData(event.currentTarget);
@@ -201,7 +223,7 @@ function Reservar() {
           unitId,
           spaceId: selectedSpace.id,
           date,
-          starts: [selectedSlot.start],
+          starts: selectedSlots.map((slot) => slot.start),
           name: String(form.get("name") ?? ""),
           phone: String(form.get("phone") ?? ""),
           notes: String(form.get("notes") ?? ""),
@@ -226,12 +248,12 @@ function Reservar() {
     setBooking(null);
     setUnitId(search.unit ?? "unidade-1");
     setDate(null);
-    setStart(null);
+    setStarts([]);
     setIdempotencyKey(globalThis.crypto.randomUUID());
   }
 
   const contactMessage = booking
-    ? `Olá! Acabei de fazer uma reserva online na ${SITE.shortName}. Código ${booking.code}; ${booking.space}; ${booking.date.split("-").reverse().join("/")} às ${formatSlot(booking.slots[0]!)}. Gostaria de tirar uma dúvida.`
+    ? `Olá! Acabei de fazer uma reserva online na ${SITE.shortName}. Código ${booking.code}; ${booking.space}; ${booking.date.split("-").reverse().join("/")}; horários ${booking.slots.map(formatSlot).join(", ")}. Gostaria de tirar uma dúvida.`
     : "";
 
   return (
@@ -353,7 +375,7 @@ function Reservar() {
               </fieldset>
 
               <fieldset className={!date ? "lk" : ""} disabled={!date}>
-                <legend className="mono">3 · Horário</legend>
+                <legend className="mono">3 · Horários · selecione um ou mais</legend>
                 {availabilityQuery.isLoading ? (
                   <p className="hint">
                     <LoaderCircle size={16} className="loading-icon" /> Consultando horários…
@@ -372,11 +394,17 @@ function Reservar() {
                           type="button"
                           className="opt"
                           disabled={!available}
-                          aria-pressed={start === slot.start}
+                          aria-pressed={starts.includes(slot.start) && available}
                           onClick={() => chooseTime(slot.start)}
                         >
                           {slot.start}
-                          <small>{available ? "livre" : "indisponível"}</small>
+                          <small>
+                            {!available
+                              ? "indisponível"
+                              : starts.includes(slot.start)
+                                ? "selecionado"
+                                : "livre · selecionar"}
+                          </small>
                         </button>
                       );
                     })}
@@ -388,7 +416,10 @@ function Reservar() {
                 )}
               </fieldset>
 
-              <fieldset className={!selectedSlot ? "lk" : ""} disabled={!selectedSlot}>
+              <fieldset
+                className={!selectedSlots.length ? "lk" : ""}
+                disabled={!selectedSlots.length}
+              >
                 <legend className="mono">4 · Seus dados</legend>
                 <div className="g2 f">
                   <label>
@@ -463,11 +494,18 @@ function Reservar() {
                 <b>{date ? dateLabel(date) : "Escolha uma data"}</b>
               </div>
               <div className="summaryline">
-                <span>Horário</span>
-                <b>{selectedSlot ? formatSlot(selectedSlot) : "Selecione um horário"}</b>
+                <span>Horários</span>
+                <b>
+                  {selectedSlots.length
+                    ? selectedSlots.map(formatSlot).join(", ")
+                    : "Selecione um ou mais horários"}
+                </b>
               </div>
               <div className="summarytotal">
-                <span>Total estimado</span>
+                <span>
+                  Total estimado
+                  {selectedSlots.length ? ` · ${selectedSlots.length} horário(s)` : ""}
+                </span>
                 <b>{formatBRL(totalCents)}</b>
               </div>
               {error && (
@@ -475,7 +513,7 @@ function Reservar() {
                   {error}
                 </p>
               )}
-              <button className="btn pri lg" type="submit" disabled={!selectedSlot || busy}>
+              <button className="btn pri lg" type="submit" disabled={!selectedSlots.length || busy}>
                 {busy ? (
                   <>
                     <LoaderCircle size={17} className="loading-icon" /> Registrando…
@@ -537,7 +575,7 @@ function BookingConfirmation({
       <p>
         <strong>{booking.space}</strong>
         <br />
-        {date} · {formatSlot(booking.slots[0]!)}
+        {date} · {booking.slots.map(formatSlot).join(", ")}
       </p>
       <p className="hint">
         Sua solicitação foi registrada online. Guarde o código e aguarde a confirmação da equipe.

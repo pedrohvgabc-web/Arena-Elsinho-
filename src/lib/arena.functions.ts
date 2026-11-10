@@ -603,11 +603,11 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
         tournament_registrations_captain_phone_check:
           "Confira o WhatsApp do capitão e informe DDD e número (10 ou 11 dígitos).",
         tournament_registrations_captain_name_check:
-          "Confira o nome do capitão (de 3 a 80 caracteres).",
+          "Confira o primeiro nome do capitão (de 3 a 80 caracteres).",
         tournament_registrations_team_name_check:
           "O nome da equipe deve ter no máximo 80 caracteres.",
         tournament_registrations_athletes_check:
-          "Informe de 3 a 5 atletas além do capitão, com nome válido para cada pessoa.",
+          "Informe exatamente três atletas além do capitão para completar o quarteto.",
       };
       return {
         ok: false as const,
@@ -868,21 +868,49 @@ const weeklyHoursSchema = z
 export const adminUpdateArenaHours = createServerFn({ method: "POST" })
   .inputValidator(weeklyHoursSchema)
   .handler(async ({ data }) => {
-    await requireAdmin();
-    const db = await database();
-    await db.begin(async (tx) => {
-      await tx`
+    try {
+      await requireAdmin();
+      const db = await database();
+      const rows = (await db`
         INSERT INTO public.arena_weekly_hours (unit_id, weekday, windows, updated_at)
         VALUES (${data.unitId}, ${data.weekday}, ${JSON.stringify(data.windows)}::jsonb, now())
         ON CONFLICT (unit_id, weekday) DO UPDATE
         SET windows = EXCLUDED.windows, updated_at = now()
-      `;
-      await tx`
-        INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
-        VALUES ('admin', 'arena.hours.update', 'arena_weekly_hours', ${`${data.unitId}:${data.weekday}`}, ${JSON.stringify({ windows: data.windows })}::jsonb)
-      `;
-    });
-    return { ok: true as const, error: null };
+        RETURNING unit_id, weekday
+      `) as unknown as Array<{ unit_id: string; weekday: number }>;
+      if (!rows[0]) return { ok: false as const, error: "O banco não confirmou o salvamento." };
+
+      // A auditoria é secundária: uma falha nela não deve desfazer a grade já salva.
+      try {
+        await audit(
+          "admin",
+          "arena.hours.update",
+          "arena_weekly_hours",
+          `${data.unitId}:${data.weekday}`,
+          { windows: data.windows },
+        );
+      } catch (error) {
+        console.error(
+          "arena hours audit failed",
+          errorCode(error) ?? "unknown",
+          errorConstraint(error) ?? "constraint_unknown",
+        );
+      }
+      return { ok: true as const, error: null };
+    } catch (error) {
+      const code = errorCode(error);
+      const unauthorized =
+        code === "UNAUTHORIZED" || (error instanceof Error && error.message === "UNAUTHORIZED");
+      const message = unauthorized
+        ? "Sua sessão de admin expirou. Entre novamente e salve o dia."
+        : "Não foi possível salvar a grade no banco. Revise os horários e tente novamente.";
+      console.error(
+        "arena hours update failed",
+        code ?? "unknown",
+        errorConstraint(error) ?? "constraint_unknown",
+      );
+      return { ok: false as const, error: message };
+    }
   });
 
 export const adminDay = createServerFn({ method: "GET" })
