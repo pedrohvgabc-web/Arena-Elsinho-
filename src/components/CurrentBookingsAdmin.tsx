@@ -79,7 +79,9 @@ function formatSlotRanges(slots: Array<{ start: string; end: string }>) {
     if (previous && previous[1] === start) previous[1] = end;
     else ranges.push([start, end]);
   }
-  return ranges.map(([start, end]) => `${start} – ${end}`).join(" · ");
+  return ranges
+    .map(([start, end]) => `${start} – ${end === "24:00" ? "00:00 (+1 dia)" : end}`)
+    .join(" · ");
 }
 
 function groupBookings(rows: BookingRow[]): BookingGroup[] {

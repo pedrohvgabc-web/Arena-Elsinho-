@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Clock3, Copy, Loader2, Plus, Save, Settings2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { SITE } from "@/lib/site";
+import { ArenaHolidayHoursAdmin } from "@/components/ArenaHolidayHoursAdmin";
 import {
   adminArenaSettings,
   adminCopyArenaHours,
@@ -485,12 +486,20 @@ export function ArenaSettingsAdmin({
                           <input
                             type="time"
                             step="900"
-                            value={window.end}
+                            value={window.end === "24:00" ? "00:00" : window.end}
                             onChange={(event) =>
                               updateWindows(
                                 weekday,
                                 windows.map((item, i) =>
-                                  i === index ? { ...item, end: event.target.value } : item,
+                                  i === index
+                                    ? {
+                                        ...item,
+                                        end:
+                                          event.target.value === "00:00"
+                                            ? "24:00"
+                                            : event.target.value,
+                                      }
+                                    : item,
                                 ),
                               )
                             }
@@ -547,6 +556,14 @@ export function ArenaSettingsAdmin({
               );
             })}
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            No campo de fechamento, 00:00 significa meia-noite do dia seguinte.
+          </p>
+          <ArenaHolidayHoursAdmin
+            key={selectedUnit}
+            unitId={selectedUnit}
+            weeklyHours={hoursDraft[selectedUnit]}
+          />
         </div>
       )}
     </section>

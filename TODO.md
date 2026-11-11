@@ -23,9 +23,15 @@
 - [x] **Backup de produção seguro** — exportação JSON autenticada com confirmação, limite de tentativas, auditoria e aviso explícito sobre dados pessoais; não portar importação livre, apagar tudo ou restauração de amostras do `localStorage` para a produção; manter cancelamento individual/de grupo existente.
 - [x] **Acabamento fiel ao ZIP** — usar layout, fita rolante, contagem regressiva ao Torneio Novembro Azul (28/11/2026 às 15h), hero em vídeo, botão que acompanha o cursor, bola e animações originais; Barlow/Barlow Condensed/JetBrains Mono, laranja da Arena e azul do evento; preservar acessibilidade, desempenho e movimento reduzido.
 
+## Horários, feriados e pedido especial
+
+- [x] **Configurar a grade semanal das duas unidades** — segunda a sexta, 19h até 00h (o último horário pode terminar à meia-noite); sábados e domingos, 08h às 23h.
+- [x] **Reconhecer feriados aplicáveis em Porto Velho/RO** — identificar feriados nacionais, o feriado estadual de Rondônia e os feriados municipais de Porto Velho; distingui-los dos pontos facultativos; permitir que o admin defina uma grade especial ou marque a unidade fechada numa data; fazer a disponibilidade pública e a validação no servidor respeitarem a exceção.
+- [x] **Oferecer negociação de horário diferenciado na landing page** — abaixo da seleção de unidade, exibir “Quero fazer reserva de um horário diferenciado!” e abrir o WhatsApp oficial com essa mensagem pronta.
+
 ## Dados comerciais que continuam pendentes
 
-- [ ] **Liberar a agenda ao público somente após configuração** — inserir no painel os preços das quadras e os horários reais de cada unidade; a migração não preenche horário ou preço presumido.
+- [ ] **Completar a disponibilidade pública da Unidade 2** — as quatro quadras da Unidade 1 já estão ativas e com preço; as quatro quadras da Unidade 2 ainda precisam ser ativadas e precificadas no painel. A grade semanal das duas unidades foi configurada em novembro de 2026.
 - [ ] **Confirmar dados locais** — validar com a Arena o endereço/pino da Unidade 2, o local do torneio e qualquer alteração de contato antes de publicar informação diferente da fonte oficial.
 - [x] **Etapa Pix demonstrativa no sucesso da pré-inscrição** — mostrar o valor de R$ 150 por equipe e um payload copiável retornado pelo provedor demonstrativo; avisar que o código não é Pix bancário, não movimenta dinheiro e não confirma pagamento; manter confirmação dos próximos passos com a organização pelo WhatsApp.
 

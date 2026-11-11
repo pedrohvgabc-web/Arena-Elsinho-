@@ -119,6 +119,12 @@ function normalizeWindows(value: unknown): OpeningWindow[] {
   });
 }
 
+function isValidDateISO(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year = 0, month = 0, day = 0] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
+}
+
 /** Fixed-window rate limit stored atomically in the database (workers are stateless). */
 async function rateLimit(key: string, max: number, windowSec: number) {
   const db = await database();
@@ -196,22 +202,42 @@ export const getPublicBookingDates = createServerFn({ method: "GET" })
   .inputValidator(z.object({ unitId: z.enum(["unidade-1", "unidade-2"]) }))
   .handler(async ({ data }) => {
     const db = await database();
-    const rows = (await db`
-      SELECT weekday, windows FROM public.arena_weekly_hours
-      WHERE unit_id = ${data.unitId}
-    `) as unknown as Array<{ weekday: number; windows: unknown }>;
-    const openDays = new Set(
-      rows
-        .filter((row) => normalizeWindows(row.windows).length > 0)
-        .map((row) => Number(row.weekday)),
-    );
     const today = arenaNow().date;
+    const [rows, overrideRows] = await Promise.all([
+      db`
+        SELECT weekday, windows FROM public.arena_weekly_hours
+        WHERE unit_id = ${data.unitId}
+      `,
+      db`
+        SELECT booking_date::text AS booking_date, windows
+        FROM public.arena_date_overrides
+        WHERE unit_id = ${data.unitId}
+          AND booking_date >= ${today}::date
+          AND booking_date < (${today}::date + 14)
+      `,
+    ]);
+    const weekly = new Map(
+      (rows as unknown as Array<{ weekday: number; windows: unknown }>).map((row) => [
+        Number(row.weekday),
+        row.windows,
+      ]),
+    );
+    const overrides = new Map(
+      (overrideRows as unknown as Array<{ booking_date: string; windows: unknown }>).map((row) => [
+        String(row.booking_date),
+        row.windows,
+      ]),
+    );
     const base = new Date(`${today}T12:00:00Z`);
     return Array.from({ length: 14 }, (_, index) => {
       const date = new Date(base);
       date.setUTCDate(date.getUTCDate() + index);
       return date.toISOString().slice(0, 10);
-    }).filter((date) => openDays.has(weekdayOf(date)));
+    }).filter((date) => {
+      const override = overrides.get(date);
+      const windows = override === undefined ? weekly.get(weekdayOf(date)) : override;
+      return normalizeWindows(windows).length > 0;
+    });
   });
 
 /** Retorna somente ocupação (sem dados pessoais). */
@@ -228,7 +254,7 @@ export const getAvailability = createServerFn({ method: "GET" })
     `) as unknown as Array<{ id: string; unit_id: string; slot_minutes: number }>;
     const space = spaces[0];
     if (!space) return [];
-    const [rows, hoursRows] = await Promise.all([
+    const [rows, hoursRows, overrideRows] = await Promise.all([
       db`
       SELECT to_char(start_time, 'HH24:MI') AS start_time,
         to_char(end_time, 'HH24:MI') AS end_time, payment_status
@@ -241,13 +267,21 @@ export const getAvailability = createServerFn({ method: "GET" })
         WHERE unit_id = ${space.unit_id} AND weekday = ${weekdayOf(data.date)}
         LIMIT 1
       `,
+      db`
+        SELECT windows FROM public.arena_date_overrides
+        WHERE unit_id = ${space.unit_id} AND booking_date = ${data.date}::date
+        LIMIT 1
+      `,
     ]);
     const occupied = (rows as unknown as AvailabilityRow[]).map((row) => ({
       start: String(row.start_time),
       end: String(row.end_time),
       status: String(row.payment_status),
     }));
-    const windows = normalizeWindows((hoursRows as unknown as HoursRow[])[0]?.windows);
+    const dateOverride = (overrideRows as unknown as HoursRow[])[0];
+    const windows = normalizeWindows(
+      dateOverride ? dateOverride.windows : (hoursRows as unknown as HoursRow[])[0]?.windows,
+    );
     return slotsFor(data.date, windows, Number(space.slot_minutes)).map((s) => {
       const conflict = occupied.find(
         (booked) => toMin(booked.start) < toMin(s.end) && toMin(booked.end) > toMin(s.start),
@@ -324,12 +358,22 @@ export const createBooking = createServerFn({ method: "POST" })
         if (!space || space.price_cents === null)
           return { code: null, error: "Quadra indisponível ou ainda sem preço configurado." };
 
-        const hoursRows = (await tx`
-          SELECT windows FROM public.arena_weekly_hours
-          WHERE unit_id = ${space.unit_id} AND weekday = ${weekdayOf(data.date)}
-          LIMIT 1
-        `) as unknown as HoursRow[];
-        const windows = normalizeWindows(hoursRows[0]?.windows);
+        const [hoursRows, overrideRows] = await Promise.all([
+          tx`
+            SELECT windows FROM public.arena_weekly_hours
+            WHERE unit_id = ${space.unit_id} AND weekday = ${weekdayOf(data.date)}
+            LIMIT 1
+          `,
+          tx`
+            SELECT windows FROM public.arena_date_overrides
+            WHERE unit_id = ${space.unit_id} AND booking_date = ${data.date}::date
+            LIMIT 1
+          `,
+        ]);
+        const dateOverride = (overrideRows as unknown as HoursRow[])[0];
+        const windows = normalizeWindows(
+          dateOverride ? dateOverride.windows : (hoursRows as unknown as HoursRow[])[0]?.windows,
+        );
         const slots: Array<{ start: string; end: string }> = [];
         for (const start of starts) {
           const valid = validateSlot(data.date, start, windows, Number(space.slot_minutes));
@@ -849,7 +893,7 @@ const weeklyHoursSchema = z
       .array(
         z.object({
           start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-          end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+          end: z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/),
         }),
       )
       .max(2),
@@ -911,6 +955,111 @@ export const adminUpdateArenaHours = createServerFn({ method: "POST" })
       );
       return { ok: false as const, error: message };
     }
+  });
+
+const dateOverrideSchema = z
+  .object({
+    unitId: z.enum(["unidade-1", "unidade-2"]),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    label: z.string().trim().min(1).max(120),
+    windows: z
+      .array(
+        z.object({
+          start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+          end: z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/),
+        }),
+      )
+      .max(2),
+  })
+  .superRefine((schedule, ctx) => {
+    if (!isValidDateISO(schedule.date)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["date"], message: "Data inválida." });
+    }
+    const error = validateOpeningWindows(schedule.windows);
+    if (error) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["windows"], message: error });
+    }
+  });
+
+export const adminGetArenaDateOverrides = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ year: z.number().int().min(2020).max(2200) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    const rows = (await db`
+      SELECT unit_id, booking_date::text AS booking_date, label, windows
+      FROM public.arena_date_overrides
+      WHERE booking_date >= ${`${data.year}-01-01`}::date
+        AND booking_date < ${`${data.year + 1}-01-01`}::date
+      ORDER BY booking_date, unit_id
+    `) as unknown as Array<{
+      unit_id: string;
+      booking_date: string;
+      label: string;
+      windows: unknown;
+    }>;
+    return rows.map((row) => ({
+      unitId: row.unit_id,
+      date: row.booking_date,
+      label: row.label,
+      windows: normalizeWindows(row.windows),
+    }));
+  });
+
+export const adminSaveArenaDateOverride = createServerFn({ method: "POST" })
+  .inputValidator(dateOverrideSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    await db`
+      INSERT INTO public.arena_date_overrides (unit_id, booking_date, label, windows, updated_at)
+      VALUES (${data.unitId}, ${data.date}::date, ${data.label.trim()}, ${db.json(data.windows)}, now())
+      ON CONFLICT (unit_id, booking_date) DO UPDATE
+      SET label = EXCLUDED.label, windows = EXCLUDED.windows, updated_at = now()
+    `;
+    try {
+      await audit(
+        "admin",
+        "arena.date_override.save",
+        "arena_date_overrides",
+        `${data.unitId}:${data.date}`,
+        {
+          label: data.label.trim(),
+          windows: data.windows,
+        },
+      );
+    } catch (error) {
+      console.error("arena date override audit failed", errorCode(error) ?? "unknown");
+    }
+    return { ok: true as const, error: null };
+  });
+
+export const adminDeleteArenaDateOverride = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      unitId: z.enum(["unidade-1", "unidade-2"]),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    if (!isValidDateISO(data.date)) return { ok: false as const, error: "Data inválida." };
+    const db = await database();
+    await db`
+      DELETE FROM public.arena_date_overrides
+      WHERE unit_id = ${data.unitId} AND booking_date = ${data.date}::date
+    `;
+    try {
+      await audit(
+        "admin",
+        "arena.date_override.delete",
+        "arena_date_overrides",
+        `${data.unitId}:${data.date}`,
+      );
+    } catch (error) {
+      console.error("arena date override audit failed", errorCode(error) ?? "unknown");
+    }
+    return { ok: true as const, error: null };
   });
 
 export const adminDay = createServerFn({ method: "GET" })
@@ -1110,7 +1259,7 @@ const copyHoursSchema = z
             .array(
               z.object({
                 start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-                end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+                end: z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/),
               }),
             )
             .max(2),

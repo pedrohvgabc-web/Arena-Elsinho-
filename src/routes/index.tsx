@@ -320,6 +320,17 @@ function HomePage() {
                 </li>
               ))}
             </ul>
+            <div data-r style={{ marginTop: "var(--s2)" }}>
+              <p className="mono">Precisa negociar um horário diferente?</p>
+              <a
+                className="btn pri lg"
+                href={waLink("Quero fazer reserva de um horário diferenciado!")}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Quero fazer reserva de um horário diferenciado! →
+              </a>
+            </div>
             <div className="mapblock" data-r>
               <div className="maphead">
                 <div>

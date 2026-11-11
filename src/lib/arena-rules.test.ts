@@ -30,6 +30,18 @@ describe("regras de funcionamento configuráveis", () => {
       ]),
     ).toBe("Os intervalos não podem se sobrepor.");
   });
+  it("aceita 24:00 apenas como fechamento e inclui o último slot até meia-noite", () => {
+    const overnight: OpeningWindow[] = [{ start: "19:00", end: "24:00" }];
+    expect(validateOpeningWindows(overnight)).toBeNull();
+    expect(slotsFor("2026-10-23", overnight).at(-1)).toEqual({ start: "23:00", end: "24:00" });
+    expect(validateSlot("2026-10-23", "23:00", overnight, 60, NOW)).toEqual({
+      ok: true,
+      end: "24:00",
+    });
+    expect(validateOpeningWindows([{ start: "19:00", end: "24:15" }])).toBe(
+      "Informe horários de abertura e fechamento válidos.",
+    );
+  });
   it("não sugere uma segunda janela se não houver um espaço de uma hora", () => {
     expect(suggestOpeningWindow([{ start: "08:00", end: "23:00" }])).toBeNull();
   });

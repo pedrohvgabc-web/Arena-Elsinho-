@@ -30,7 +30,7 @@ export function validateOpeningWindows(windows: OpeningWindow[]) {
   if (windows.length > 2) return "Defina no máximo dois intervalos por dia.";
   const ordered = [...windows].sort((a, b) => toMin(a.start) - toMin(b.start));
   for (const [index, window] of ordered.entries()) {
-    if (!validTime(window.start) || !validTime(window.end)) {
+    if (!validTime(window.start) || !validTime(window.end, true)) {
       return "Informe horários de abertura e fechamento válidos.";
     }
     if (toMin(window.end) <= toMin(window.start)) {
@@ -47,7 +47,7 @@ export function validateOpeningWindows(windows: OpeningWindow[]) {
 /** Sugere um intervalo de pelo menos uma hora que não se sobrepõe ao existente. */
 export function suggestOpeningWindow(windows: OpeningWindow[]): OpeningWindow | null {
   const ordered = windows
-    .filter((window) => validTime(window.start) && validTime(window.end))
+    .filter((window) => validTime(window.start) && validTime(window.end, true))
     .filter((window) => toMin(window.end) > toMin(window.start))
     .sort((a, b) => toMin(a.start) - toMin(b.start));
   let cursor = 8 * 60;
@@ -83,10 +83,12 @@ function validDate(dateISO: string) {
   return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === dateISO;
 }
 
-function validTime(time: string) {
+function validTime(time: string, allowEndOfDay = false) {
   if (!/^\d{2}:\d{2}$/.test(time)) return false;
   const [hour = 99, minute = 99] = time.split(":").map(Number);
-  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+  return (
+    (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) || (allowEndOfDay && time === "24:00")
+  );
 }
 
 /** Gera horários completos dentro das janelas salvas para a unidade e o dia. */
@@ -104,7 +106,7 @@ export function slotsFor(
     return [];
   const out: Array<{ start: string; end: string }> = [];
   for (const window of windows) {
-    if (!validTime(window.start) || !validTime(window.end)) continue;
+    if (!validTime(window.start) || !validTime(window.end, true)) continue;
     const open = toMin(window.start);
     const close = toMin(window.end);
     if (close <= open) continue;

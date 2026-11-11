@@ -74,7 +74,8 @@ function shortWeekday(dateISO: string) {
     .replace(".", "");
 }
 function formatSlot(slot: { start: string; end: string }) {
-  return `${slot.start.slice(0, 5)} – ${slot.end.slice(0, 5)}`;
+  const end = slot.end.slice(0, 5);
+  return `${slot.start.slice(0, 5)} – ${end === "24:00" ? "00:00 (+1 dia)" : end}`;
 }
 
 export const Route = createFileRoute("/reservar")({
