@@ -36,6 +36,14 @@
 - [ ] **Confirmar dados locais** — validar com a Arena o endereço/pino da Unidade 2, o local do torneio e qualquer alteração de contato antes de publicar informação diferente da fonte oficial.
 - [x] **Etapa Pix demonstrativa no sucesso da pré-inscrição** — mostrar o valor de R$ 150 por equipe e um payload copiável retornado pelo provedor demonstrativo; avisar que o código não é Pix bancário, não movimenta dinheiro e não confirma pagamento; manter confirmação dos próximos passos com a organização pelo WhatsApp.
 
+## Reserva: promoção, dados e alinhamento do hero
+
+- [ ] **Aplicar a promoção de horários múltiplos** — exibir um selo circular com “Ao reservar 2 horários ou mais, você paga R$ 50 a hora. Vem aproveitar!!!”; atualizar o total e aplicar o valor promocional no servidor em reservas com dois ou mais horários.
+- [ ] **Centralizar a bola/CTA do hero no cursor** — fazer o centro visual acompanhar o ponteiro, levando em conta o tamanho real do elemento e seu contêiner, sem quebrar o modo móvel nem movimento reduzido.
+- [ ] **Exigir endereço, CPF e confirmação de uso** — solicitar endereço completo e CPF válido durante a reserva; exigir uma caixa de confirmação, com texto amigável e link para a Política de Privacidade, registrando a confirmação junto à reserva.
+- [ ] **Atualizar a Política de Privacidade** — informar a coleta de CPF e endereço para registrar e administrar reservas, sem expor esses campos na confirmação pública ou em mensagens de WhatsApp.
+- [ ] **Integração Pix InfinitePay** — adiada para depois da renovação dos créditos; não integrar nem substituir o pagamento demonstrativo nesta tarefa.
+
 ## Correções operacionais desta solicitação
 
 - [x] **Selecionar e reservar mais de um horário** — permitir selecionar vários horários livres para a mesma quadra/dia; enviar todos ao backend, validar e gravar juntos em transação, calcular o total pela quantidade selecionada e listar todos na confirmação; conflitos mantêm a reserva inteira sem gravação parcial.

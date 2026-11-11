@@ -10,7 +10,15 @@ import {
   getPublicBookingDates,
   getSpaces,
 } from "@/lib/arena.functions";
-import { ARENA_TZ, arenaNow, formatBRL, MAX_SLOTS, type PaymentMethod } from "@/lib/arena-rules";
+import {
+  ARENA_TZ,
+  arenaNow,
+  calculateBookingPrice,
+  formatBRL,
+  MAX_SLOTS,
+  type PaymentMethod,
+} from "@/lib/arena-rules";
+import { formatCpfInput, normalizeValidCpf } from "@/lib/customer-data";
 
 type UnitId = "unidade-1" | "unidade-2";
 type Space = {
@@ -37,6 +45,7 @@ type BookingResult = {
   method: PaymentMethod;
   status: string;
   amount: number;
+  promoApplied: boolean;
   expiresAt: string | null;
   firstName: string;
   space: string;
@@ -173,7 +182,14 @@ function Reservar() {
     });
   }, [slots]);
   const unit = SITE.units.find((item) => item.id === unitId)!;
-  const totalCents = selectedSpace ? selectedSpace.price_cents * selectedSlots.length : 0;
+  const pricing = selectedSpace
+    ? calculateBookingPrice(
+        selectedSpace.price_cents,
+        selectedSpace.slot_minutes,
+        selectedSlots.length,
+      )
+    : null;
+  const totalCents = pricing?.totalCents ?? 0;
 
   function resetIdempotency() {
     setIdempotencyKey(globalThis.crypto.randomUUID());
@@ -215,9 +231,23 @@ function Reservar() {
   async function finishBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSpace || !date || !selectedSlots.length) return;
+    const form = new FormData(event.currentTarget);
+    const cpf = normalizeValidCpf(String(form.get("cpf") ?? ""));
+    if (!cpf) {
+      setError("Confira o CPF informado.");
+      return;
+    }
+    const address = String(form.get("address") ?? "").trim();
+    if (address.length < 8) {
+      setError("Informe o endereço completo.");
+      return;
+    }
+    if (form.get("privacyConsent") !== "on") {
+      setError("Confirme o uso dos dados para continuar.");
+      return;
+    }
     setBusy(true);
     setError(null);
-    const form = new FormData(event.currentTarget);
     try {
       const result = await submitBooking({
         data: {
@@ -227,6 +257,9 @@ function Reservar() {
           starts: selectedSlots.map((slot) => slot.start),
           name: String(form.get("name") ?? ""),
           phone: String(form.get("phone") ?? ""),
+          cpf,
+          address,
+          privacyConsent: true,
           notes: String(form.get("notes") ?? ""),
           method: paymentMethod,
           idempotencyKey,
@@ -302,7 +335,7 @@ function Reservar() {
                     >
                       <b>{index === 0 ? "Cuniã" : "Pinheiro Machado"}</b>
                       <span>{option.address}</span>
-                      <em>4 quadras de areia · Vôlei de praia</em>
+                      <em>Quadras de areia · Vôlei de praia</em>
                     </button>
                   ))}
                 </div>
@@ -374,6 +407,25 @@ function Reservar() {
                   <p className="hint">Nenhum dia aberto está configurado para esta unidade.</p>
                 )}
               </fieldset>
+
+              <div
+                className="booking-promo"
+                role="note"
+                aria-label="Ao reservar dois horários ou mais, você paga cinquenta reais a hora. Vem aproveitar."
+              >
+                <span>Ao reservar</span>
+                <strong>
+                  2 horários
+                  <br />
+                  ou mais
+                </strong>
+                <span>você paga</span>
+                <b>R$ 50</b>
+                <span>a hora · Vem aproveitar!!!</span>
+              </div>
+              <p className="booking-promo-hint">
+                O total é atualizado automaticamente ao selecionar 2 horários ou mais.
+              </p>
 
               <fieldset className={!date ? "lk" : ""} disabled={!date}>
                 <legend className="mono">3 · Horários · selecione um ou mais</legend>
@@ -449,6 +501,33 @@ function Reservar() {
                 </div>
                 <div className="g2 f booking-extra">
                   <label>
+                    <span className="mono">CPF</span>
+                    <input
+                      name="cpf"
+                      required
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={14}
+                      placeholder="000.000.000-00"
+                      onChange={(event) => {
+                        event.currentTarget.value = formatCpfInput(event.currentTarget.value);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span className="mono">Endereço completo</span>
+                    <input
+                      name="address"
+                      required
+                      minLength={8}
+                      maxLength={250}
+                      autoComplete="street-address"
+                      placeholder="Rua, número, bairro e cidade"
+                    />
+                  </label>
+                </div>
+                <div className="g2 f booking-extra">
+                  <label>
                     <span className="mono">Atividade principal</span>
                     <input value="Vôlei de praia" readOnly />
                   </label>
@@ -476,9 +555,22 @@ function Reservar() {
                   </label>
                 </div>
                 <p className="hint">
-                  <ShieldCheck size={15} /> Os dados são usados para registrar a reserva e permitir
-                  contato da Arena. O Pix é demonstrativo, sem cobrança real.
+                  <ShieldCheck size={15} /> Nome, WhatsApp, CPF e endereço ajudam a identificar e
+                  administrar sua reserva. O Pix é demonstrativo, sem cobrança real.
                 </p>
+                <div className="booking-consent-block">
+                  <label className="booking-consent">
+                    <input type="checkbox" name="privacyConsent" required />
+                    <span>
+                      Autorizo o uso dos dados que informei para registrar, confirmar e administrar
+                      esta reserva.
+                    </span>
+                  </label>
+                  <p className="booking-privacy-copy">
+                    Veja como tratamos essas informações na{" "}
+                    <Link to="/privacidade">Política de Privacidade</Link>.
+                  </p>
+                </div>
               </fieldset>
             </div>
 
@@ -505,7 +597,9 @@ function Reservar() {
               <div className="summarytotal">
                 <span>
                   Total estimado
-                  {selectedSlots.length ? ` · ${selectedSlots.length} horário(s)` : ""}
+                  {selectedSlots.length
+                    ? ` · ${selectedSlots.length} horário(s)${pricing?.promoApplied ? " · promoção R$ 50/h" : ""}`
+                    : ""}
                 </span>
                 <b>{formatBRL(totalCents)}</b>
               </div>
@@ -599,6 +693,9 @@ function BookingConfirmation({
           <b>{formatBRL(booking.amount)}</b>
         </div>
       </div>
+      {booking.promoApplied && (
+        <p className="booking-promo-applied">Promoção aplicada: R$ 50 por hora.</p>
+      )}
       {booking.method === "pix" && booking.pixSimulated && booking.pixPayload && (
         <div className="pix-note">
           <strong>Pix demonstrativo — sem cobrança real</strong>

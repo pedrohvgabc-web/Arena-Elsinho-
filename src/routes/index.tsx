@@ -94,25 +94,43 @@ function HomePage() {
     let targetY = 0;
     const pointerFine = window.matchMedia("(pointer: fine)");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const followerOrigin = () => {
+      const parent = follower?.offsetParent;
+      if (parent instanceof HTMLElement) {
+        const bounds = parent.getBoundingClientRect();
+        return {
+          left: bounds.left + parent.clientLeft,
+          top: bounds.top + parent.clientTop,
+        };
+      }
+      const bounds = hero?.getBoundingClientRect();
+      return { left: bounds?.left ?? 0, top: bounds?.top ?? 0 };
+    };
     const stopFollower = () => {
       cancelAnimationFrame(raf);
       raf = 0;
     };
     const animateFollower = () => {
-      if (!follower || !heroVisible || reducedMotion.matches || document.hidden) {
+      if (
+        !follower ||
+        !heroVisible ||
+        !pointerFine.matches ||
+        reducedMotion.matches ||
+        document.hidden
+      ) {
         stopFollower();
         return;
       }
       x += (targetX - x) * 0.12;
       y += (targetY - y) * 0.12;
-      follower.style.transform = `translate3d(${x - 64}px,${y - 64}px,0)`;
+      follower.style.transform = `translate3d(${x - follower.offsetWidth / 2}px,${y - follower.offsetHeight / 2}px,0)`;
       raf = requestAnimationFrame(animateFollower);
     };
     const onPointerMove = (event: PointerEvent) => {
-      if (!hero || !follower) return;
-      const rect = hero.getBoundingClientRect();
-      targetX = event.clientX - rect.left;
-      targetY = event.clientY - rect.top;
+      if (!hero || !follower || !pointerFine.matches || reducedMotion.matches) return;
+      const origin = followerOrigin();
+      targetX = event.clientX - origin.left;
+      targetY = event.clientY - origin.top;
       if (!raf) raf = requestAnimationFrame(animateFollower);
     };
     const syncFollower = () => {
@@ -123,9 +141,10 @@ function HomePage() {
         follower.style.transform = "";
         stopFollower();
       } else if (heroVisible && !raf) {
-        const rect = hero.getBoundingClientRect();
-        x = targetX = rect.width * 0.68;
-        y = targetY = rect.height * 0.78;
+        const bounds = hero.getBoundingClientRect();
+        const origin = followerOrigin();
+        x = targetX = bounds.left + bounds.width * 0.68 - origin.left;
+        y = targetY = bounds.top + bounds.height * 0.78 - origin.top;
         raf = requestAnimationFrame(animateFollower);
       }
     };
@@ -300,7 +319,7 @@ function HomePage() {
               <h2>
                 Duas casas.
                 <br />
-                Oito quadras.
+                Areia de sobra.
               </h2>
               <p>Escolha onde jogar. Toque numa unidade para escolher seu horário.</p>
             </div>

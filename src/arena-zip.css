@@ -976,6 +976,83 @@ fieldset.lk {
     grid-template-columns: 1fr;
   }
 }
+.booking-promo {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.28rem;
+  width: min(100%, 12.5rem);
+  aspect-ratio: 1;
+  margin: 0 0 var(--s1);
+  padding: 1rem;
+  border: 3px solid rgb(255 255 255 / 0.75);
+  border-radius: 50%;
+  background: var(--ac);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 10px 40px rgb(223 79 7 / 0.28);
+}
+.booking-promo strong {
+  font: italic 800 1.05rem/1.03 var(--fh);
+  text-transform: uppercase;
+}
+.booking-promo b {
+  font: italic 900 1.75rem/0.95 var(--fh);
+}
+.booking-promo span {
+  font-size: 0.78rem;
+  line-height: 1.1;
+}
+.booking-promo-hint {
+  max-width: 32rem;
+  margin: -0.5rem 0 var(--s1);
+  color: var(--mu);
+  font-size: 0.9rem;
+}
+.booking-promo-applied {
+  color: var(--ac);
+  font-weight: 800;
+}
+.booking-consent-block {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: var(--s1);
+}
+.booking-consent {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  background: var(--sf);
+  cursor: pointer;
+  line-height: 1.45;
+}
+.booking-consent input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-height: 1.25rem;
+  margin: 0.12rem 0 0;
+  padding: 0;
+  accent-color: var(--ac);
+}
+.booking-consent input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 3px;
+}
+.booking-privacy-copy {
+  margin: 0;
+  color: var(--mu);
+  font-size: 0.9rem;
+}
+.booking-privacy-copy a {
+  color: var(--ac);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
 .rs {
   position: sticky;
   top: 5rem;

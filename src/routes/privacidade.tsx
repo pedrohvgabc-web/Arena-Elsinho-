@@ -20,40 +20,48 @@ function Page() {
   return (
     <LegalPage title="Política de Privacidade">
       <p>
-        Esta política explica como a Arena Leste usa os dados enviados pelo site e pelo formulário
-        de pré-inscrição do Torneio Novembro Azul.
+        Esta política explica como a Arena Leste usa os dados enviados pelo site, pelo pedido de
+        reserva e pelo formulário de pré-inscrição do Torneio Novembro Azul.
       </p>
       <h2>Dados coletados</h2>
       <p>
-        Na pré-inscrição, coletamos o nome do capitão, o WhatsApp para contato, o nome opcional da
-        equipe e os nomes dos demais atletas. A solicitação enviada ao formulário de direitos LGPD
-        também pede nome, telefone e o tipo de solicitação. Para limitar inscrições repetidas, uma
-        chave temporária usa um hash derivado do WhatsApp do capitão; o número não é gravado nessa
-        chave.
+        No pedido de reserva, coletamos nome, WhatsApp, CPF e endereço completo do responsável, além
+        da unidade, quadra, data, horários, forma de pagamento e observações opcionais. O CPF é
+        validado no envio e armazenado em formato numérico junto ao registro da reserva.
+      </p>
+      <p>
+        Na pré-inscrição do torneio, coletamos o nome do capitão, o WhatsApp para contato, o nome
+        opcional da equipe e os nomes dos demais atletas. O formulário de direitos LGPD também pede
+        nome, telefone e o tipo de solicitação. Para limitar inscrições repetidas, uma chave
+        temporária usa um hash derivado do WhatsApp do capitão; o número não é gravado nessa chave.
       </p>
       <h2>Finalidade</h2>
       <p>
-        Usamos os dados da equipe para organizar as inscrições do torneio, verificar a lista de
-        atletas e falar com o capitão sobre a participação. O botão de agendamento abre uma conversa
-        no WhatsApp oficial; os dados digitados nessa conversa são tratados pelo WhatsApp e não são
-        armazenados por este formulário do site.
+        Usamos os dados da reserva para identificar o responsável, registrar e administrar os
+        horários e falar com ele sobre a reserva. O CPF e o endereço não aparecem na confirmação
+        pública nem na mensagem automática que pode ser aberta no WhatsApp. Usamos os dados da
+        equipe para organizar as inscrições do torneio, verificar a lista de atletas e falar com o
+        capitão sobre a participação. Mensagens digitadas diretamente no WhatsApp são tratadas por
+        esse serviço.
       </p>
       <h2>Armazenamento e compartilhamento</h2>
       <p>
-        As pré-inscrições são armazenadas no banco Neon, acessível somente ao servidor da aplicação
-        e à administração autenticada. Não vendemos dados. Usamos infraestrutura técnica de
-        hospedagem para operar o site e o banco.
+        Reservas e pré-inscrições são armazenadas no banco Neon e acessíveis ao servidor da
+        aplicação e à administração autenticada. Não vendemos dados. Usamos a infraestrutura do
+        Render para hospedar o site e o servidor e a do Neon para manter o banco de dados.
       </p>
       <p>
-        Os dados de inscrição serão mantidos pelo período necessário à organização do torneio e, em
-        regra, por até 12 meses após o evento, salvo necessidade de retenção por obrigação legal.
-        Solicitações de exclusão e demais direitos serão avaliadas conforme a lei aplicável.
+        Os dados de reserva são mantidos pelo tempo necessário para administrar os agendamentos e
+        cumprir obrigações aplicáveis. Os dados de inscrição serão mantidos pelo período necessário
+        à organização do torneio e, em regra, por até 12 meses após o evento, salvo necessidade de
+        retenção por obrigação legal. Solicitações de exclusão e demais direitos serão avaliadas
+        conforme a lei aplicável.
       </p>
       <h2>Segurança</h2>
       <p>
-        O formulário valida os dados no servidor e tem limite de tentativas. A lista de inscrições
-        não é pública e o painel exige autenticação. Não envie informações sensíveis além do nome e
-        WhatsApp solicitados.
+        Os formulários validam os dados no servidor e têm limite de tentativas. As reservas e
+        inscrições não são públicas e o painel exige autenticação. O CPF e o endereço não são
+        incluídos na confirmação pública nem enviados automaticamente ao WhatsApp.
       </p>
       <h2>Seus direitos</h2>
       <p>

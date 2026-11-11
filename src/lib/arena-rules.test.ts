@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  calculateBookingPrice,
   validateSlot,
   slotsFor,
   normalizePhone,
@@ -73,6 +74,37 @@ describe("regras de funcionamento configuráveis", () => {
   it("rejeita data inexistente e horário inválido", () => {
     expect(validateSlot("2026-02-30", "14:00", TUESDAY, 60, NOW).ok).toBe(false);
     expect(validateSlot("2026-10-27", "24:00", TUESDAY, 60, NOW).ok).toBe(false);
+  });
+});
+
+describe("preço promocional de reservas múltiplas", () => {
+  it("mantém o preço normal com um horário e aplica R$50/h com dois", () => {
+    expect(calculateBookingPrice(6_000, 60, 1)).toEqual({
+      perSlotCents: 6_000,
+      totalCents: 6_000,
+      promoApplied: false,
+    });
+    expect(calculateBookingPrice(6_000, 60, 2)).toEqual({
+      perSlotCents: 5_000,
+      totalCents: 10_000,
+      promoApplied: true,
+    });
+  });
+
+  it("calcula o valor por hora proporcional à duração do horário", () => {
+    expect(calculateBookingPrice(9_000, 90, 2)).toEqual({
+      perSlotCents: 7_500,
+      totalCents: 15_000,
+      promoApplied: true,
+    });
+  });
+
+  it("não eleva uma tarifa configurada abaixo de R$50/h", () => {
+    expect(calculateBookingPrice(4_000, 60, 2)).toEqual({
+      perSlotCents: 4_000,
+      totalCents: 8_000,
+      promoApplied: false,
+    });
   });
 });
 

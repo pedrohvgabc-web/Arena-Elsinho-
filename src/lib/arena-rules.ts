@@ -175,6 +175,23 @@ export const formatBRL = (cents: number) =>
 export const MAX_SLOTS = 8;
 export const totalCents = (priceCents: number, count: number) => priceCents * Math.max(0, count);
 
+export const MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR = 5_000;
+
+export function calculateBookingPrice(priceCents: number, slotMinutes: number, count: number) {
+  const quantity = Math.max(0, Math.floor(count));
+  const regularPrice = Number.isFinite(priceCents) ? Math.max(0, Math.round(priceCents)) : 0;
+  const validDuration = Number.isInteger(slotMinutes) && slotMinutes > 0;
+  if (!quantity || !validDuration) return { perSlotCents: 0, totalCents: 0, promoApplied: false };
+
+  const regularHourlyRate = (regularPrice * 60) / slotMinutes;
+  const promoApplied = quantity >= 2 && regularHourlyRate > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR;
+  const perSlotCents = promoApplied
+    ? Math.round((MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR * slotMinutes) / 60)
+    : regularPrice;
+
+  return { perSlotCents, totalCents: perSlotCents * quantity, promoApplied };
+}
+
 /** Junta horários escolhidos em faixas contínuas para leitura do cliente/admin. */
 export function groupRanges(starts: string[], slotMinutes = SLOT_MINUTES): Array<[string, string]> {
   const unique = [...new Set(starts)].sort();
