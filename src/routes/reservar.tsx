@@ -137,7 +137,9 @@ function Reservar() {
   const paymentConfigQuery = useQuery({
     queryKey: ["public-payment-config"],
     queryFn: () => fetchPaymentConfig(),
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: false,
   });
   const paymentMode = paymentConfigQuery.data?.mode ?? null;
   const paymentMethods = METHODS.map((method) =>
