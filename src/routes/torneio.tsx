@@ -158,8 +158,8 @@ function TournamentPage() {
                 </div>
               </div>
               <p className="tor-note mono">
-                Pré-inscrição gratuita neste site. A organização confirma a participação e o
-                pagamento com o capitão.
+                Inscrição de R$ 150 por equipe. Quando o checkout real estiver ativado, o pagamento
+                é feito na InfinitePay; no modo demonstrativo não há cobrança.
               </p>
             </div>
             <div>
@@ -222,6 +222,7 @@ function RegistrationForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registrationCode, setRegistrationCode] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [pixPayload, setPixPayload] = useState<string | null>(null);
   const [pixSimulated, setPixSimulated] = useState(false);
   const [pixCopied, setPixCopied] = useState(false);
@@ -255,6 +256,7 @@ function RegistrationForm() {
         return;
       }
       setRegistrationCode(result.code);
+      setCheckoutUrl(result.checkoutUrl);
       setPixPayload(result.pixPayload);
       setPixSimulated(result.pixSimulated);
     } catch {
@@ -285,9 +287,20 @@ function RegistrationForm() {
           Pré-inscrição recebida!
         </h3>
         <p className="mt-2 text-muted-foreground">
-          Anote seu código <strong className="text-foreground">{registrationCode}</strong>. A equipe
-          vai confirmar a participação e orientar o pagamento pelo WhatsApp.
+          Anote seu código <strong className="text-foreground">{registrationCode}</strong>.
+          {checkoutUrl
+            ? " A inscrição foi registrada; conclua o pagamento no checkout seguro da InfinitePay."
+            : " A equipe poderá confirmar a participação pelo WhatsApp."}
         </p>
+        {checkoutUrl && (
+          <a
+            href={checkoutUrl}
+            rel="noopener noreferrer"
+            className="btn-jelly mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 font-bold text-primary-foreground"
+          >
+            <ArrowRight className="h-4 w-4" /> Pagar R$ 150 · Pix ou cartão
+          </a>
+        )}
         {pixSimulated && pixPayload && (
           <section className="pix-note mt-6" aria-labelledby="tournament-pix-heading">
             <strong
@@ -428,8 +441,9 @@ function RegistrationForm() {
         {busy ? "Enviando pré-inscrição…" : "Enviar pré-inscrição"}
       </button>
       <p className="mt-3 text-center text-xs text-muted-foreground">
-        Inscrição: {TOURNAMENT.entryFee}. O envio não efetua pagamento nem confirma a vaga
-        automaticamente.
+        Inscrição: {TOURNAMENT.entryFee}. Após enviar, a próxima etapa mostra a forma disponível. No
+        checkout InfinitePay, o pagamento só é confirmado após validação no servidor; no modo
+        demonstrativo, nenhum valor é cobrado.
       </p>
     </form>
   );

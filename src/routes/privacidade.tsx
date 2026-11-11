@@ -51,6 +51,14 @@ function Page() {
         Render para hospedar o site e o servidor e a do Neon para manter o banco de dados.
       </p>
       <p>
+        Quando o checkout real estiver ativado, o site abre uma página hospedada pela InfinitePay
+        para pagamento por Pix ou cartão. Para gerar o link, compartilhamos com esse provedor o
+        valor, uma descrição do serviço e um código técnico do pedido; não enviamos CPF nem
+        endereço. Os dados do cartão são informados diretamente no ambiente da InfinitePay. O
+        servidor recebe identificadores da transação e consulta a InfinitePay para validar o
+        pagamento.
+      </p>
+      <p>
         Os dados de reserva são mantidos pelo tempo necessário para administrar os agendamentos e
         cumprir obrigações aplicáveis. Os dados de inscrição serão mantidos pelo período necessário
         à organização do torneio e, em regra, por até 12 meses após o evento, salvo necessidade de
@@ -61,7 +69,9 @@ function Page() {
       <p>
         Os formulários validam os dados no servidor e têm limite de tentativas. As reservas e
         inscrições não são públicas e o painel exige autenticação. O CPF e o endereço não são
-        incluídos na confirmação pública nem enviados automaticamente ao WhatsApp.
+        incluídos na confirmação pública, nas mensagens automáticas de WhatsApp ou no link de
+        pagamento da InfinitePay. A chave de API de pagamento é mantida somente em configuração
+        privada do servidor.
       </p>
       <h2>Seus direitos</h2>
       <p>

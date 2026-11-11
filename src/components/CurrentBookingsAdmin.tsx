@@ -35,6 +35,9 @@ type BookingRow = {
   phone: string;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
+  payment_provider: string | null;
+  provider_payment_status: string | null;
+  provider_capture_method: string | null;
   amount_cents: number;
   notes: string | null;
   space_id: string;
@@ -50,8 +53,9 @@ type BookingGroup = {
   phone: string;
   unitId: UnitId;
   spaceName: string;
-  method: PaymentMethod;
+  paymentLabel: string;
   status: PaymentStatus;
+  paymentNeedsReview: boolean;
   amountCents: number;
   slots: Array<{ start: string; end: string }>;
 };
@@ -94,11 +98,32 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
     .map(([code, items]) => {
       const first = items[0]!;
       const unitNumber = first.unit_id === "unidade-1" ? 1 : 2;
-      const status = items.some((row) => row.payment_status === "pending")
-        ? "pending"
-        : items.some((row) => row.payment_status === "paid")
-          ? "paid"
-          : first.payment_status;
+      const statuses = items.map((row) => row.payment_status);
+      const status: PaymentStatus = statuses.every((value) => value === "paid")
+        ? "paid"
+        : statuses.includes("pending")
+          ? "pending"
+          : statuses.includes("expired")
+            ? "expired"
+            : statuses.includes("cancelled")
+              ? "cancelled"
+              : statuses.includes("failed")
+                ? "failed"
+                : first.payment_status;
+      const paymentNeedsReview =
+        first.payment_provider === "infinitepay" &&
+        items.some((row) => row.provider_payment_status === "paid") &&
+        status !== "paid";
+      const captureMethod =
+        items.find((row) => row.provider_capture_method)?.provider_capture_method ?? null;
+      const paymentLabel =
+        first.payment_provider === "infinitepay"
+          ? captureMethod === "pix"
+            ? "Pix · InfinitePay"
+            : captureMethod === "credit_card"
+              ? "Cartão · InfinitePay"
+              : "Pix ou cartão · InfinitePay"
+          : PAYMENT_LABEL[first.payment_method];
       return {
         id: first.id,
         code,
@@ -107,8 +132,9 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
         phone: first.phone,
         unitId: first.unit_id,
         spaceName: `Unidade ${unitNumber} · ${first.space_name}`,
-        method: first.payment_method,
+        paymentLabel,
         status,
+        paymentNeedsReview,
         amountCents: items.reduce((sum, row) => sum + Number(row.amount_cents), 0),
         slots: items.map((row) => ({ start: row.start_time, end: row.end_time })),
       };
@@ -174,11 +200,16 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
     });
   }, [groups, searchText, statusFilter]);
 
-  async function act(booking: BookingGroup, action: "mark_paid" | "cancel") {
+  async function act(
+    booking: BookingGroup,
+    action: "mark_paid" | "cancel" | "confirm_received_payment",
+  ) {
     const question =
       action === "mark_paid"
-        ? "Confirmar como paga esta reserva e todos os horários do grupo?"
-        : "Cancelar esta reserva e liberar todos os horários do grupo?";
+        ? "Confirmar manualmente o pagamento desta reserva e de todos os horários do grupo?"
+        : action === "confirm_received_payment"
+          ? "A InfinitePay confirmou o pagamento. Verifique na InfinitePay se a cobrança não foi estornada e confira se os horários seguem livres; confirmar bloqueará novamente as quadras. Continuar?"
+          : "Cancelar esta reserva e liberar todos os horários do grupo? Esta ação não estorna pagamentos; faça eventual estorno diretamente na InfinitePay.";
     if (!window.confirm(question)) return;
     setWorking(booking.code);
     try {
@@ -187,7 +218,13 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
         toast.error(result.error);
         return;
       }
-      toast.success(action === "mark_paid" ? "Reserva confirmada." : "Reserva cancelada.");
+      toast.success(
+        action === "mark_paid"
+          ? "Reserva confirmada."
+          : action === "confirm_received_payment"
+            ? "Reserva confirmada após revisão do pagamento."
+            : "Reserva cancelada.",
+      );
       await queryClient.invalidateQueries({ queryKey: ["admin-current-day"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-current-bookings"] });
     } catch {
@@ -371,8 +408,7 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                             {booking.spaceName} · {formatSlotRanges(booking.slots)}
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {booking.phone} · {PAYMENT_LABEL[booking.method]} · Código{" "}
-                            {booking.code}
+                            {booking.phone} · {booking.paymentLabel} · Código {booking.code}
                           </p>
                         </div>
                         <span
@@ -381,6 +417,17 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                           {STATUS_LABEL[booking.status]}
                         </span>
                       </div>
+                      {booking.paymentNeedsReview && (
+                        <p
+                          role="alert"
+                          className="mt-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning"
+                        >
+                          Pagamento recebido, mas a reserva não foi confirmada automaticamente. Use
+                          a confirmação após revisão somente se o horário ainda não terminou e
+                          continua livre; caso contrário, contate o cliente e trate eventual estorno
+                          na InfinitePay.
+                        </p>
+                      )}
                       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                         <strong className="font-display text-xl">
                           {formatBRL(booking.amountCents)}
@@ -394,7 +441,22 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                           >
                             <MessageCircle className="h-4 w-4" /> Contatar
                           </a>
-                          {booking.status === "pending" && (
+                          {booking.paymentNeedsReview && (
+                            <button
+                              type="button"
+                              disabled={working === booking.code}
+                              onClick={() => act(booking, "confirm_received_payment")}
+                              className="inline-flex min-h-10 items-center gap-2 rounded-full bg-success px-4 text-sm font-bold text-success-foreground disabled:opacity-50"
+                            >
+                              {working === booking.code ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="h-4 w-4" />
+                              )}{" "}
+                              Confirmar reserva após revisão
+                            </button>
+                          )}
+                          {booking.status === "pending" && !booking.paymentNeedsReview && (
                             <button
                               type="button"
                               disabled={working === booking.code}

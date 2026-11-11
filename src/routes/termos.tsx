@@ -12,9 +12,10 @@ export const Route = createFileRoute("/termos")({
     <LegalPage title="Termos de Uso">
       <h2>Agendamento das unidades</h2>
       <p>
-        Os botões de agendamento iniciam uma conversa pelo WhatsApp da Arena Leste e identificam a
-        unidade escolhida. O envio da mensagem é um pedido de consulta, não uma confirmação
-        automática. Horários, valores e condições são confirmados diretamente pela equipe.
+        O site registra pedidos de reserva por unidade, quadra, data e horário. Quando o checkout
+        InfinitePay estiver ativado, a reserva fica pendente enquanto o pagamento é processado e só
+        muda para paga após confirmação servidor a servidor. A página de retorno do checkout, por si
+        só, não comprova o pagamento. Pagamento no local fica sujeito à confirmação da equipe.
       </p>
       <h2>Pré-inscrição no torneio</h2>
       <p>
@@ -23,9 +24,11 @@ export const Route = createFileRoute("/termos")({
         {TOURNAMENT.time}. A inscrição informada é {TOURNAMENT.entryFee}.
       </p>
       <p>
-        O envio do formulário é uma pré-inscrição, não reserva uma vaga automaticamente e não efetua
-        pagamento. A equipe da Arena Leste entrará em contato com o capitão para confirmar a
-        participação e orientar sobre os próximos passos.
+        O formulário registra uma equipe com quatro participantes. Quando o checkout InfinitePay
+        estiver ativado, a taxa poderá ser paga por Pix ou cartão no ambiente hospedado pela
+        InfinitePay. A inscrição só aparece como paga depois da validação do servidor. Se o site
+        estiver no modo demonstrativo, o código exibido não movimenta dinheiro nem comprova
+        pagamento.
       </p>
       <h2>Informações de endereço</h2>
       <p>

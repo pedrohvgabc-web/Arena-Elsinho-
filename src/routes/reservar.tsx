@@ -6,6 +6,7 @@ import { Check, Copy, LoaderCircle, MessageCircle, ShieldCheck, Ticket } from "l
 import { SITE, waLink } from "@/lib/site";
 import {
   createBooking,
+  getPublicPaymentConfig,
   getAvailability,
   getPublicBookingDates,
   getSpaces,
@@ -51,6 +52,7 @@ type BookingResult = {
   space: string;
   pixPayload: string | null;
   pixSimulated: boolean;
+  checkoutUrl: string | null;
 };
 
 const UNIT_IDS: UnitId[] = ["unidade-1", "unidade-2"];
@@ -117,6 +119,7 @@ export const Route = createFileRoute("/reservar")({
 function Reservar() {
   const search = Route.useSearch();
   const fetchSpaces = useServerFn(getSpaces);
+  const fetchPaymentConfig = useServerFn(getPublicPaymentConfig);
   const fetchDates = useServerFn(getPublicBookingDates);
   const fetchAvailability = useServerFn(getAvailability);
   const submitBooking = useServerFn(createBooking);
@@ -130,6 +133,28 @@ function Reservar() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<BookingResult | null>(null);
+
+  const paymentConfigQuery = useQuery({
+    queryKey: ["public-payment-config"],
+    queryFn: () => fetchPaymentConfig(),
+    staleTime: 60_000,
+  });
+  const paymentMode = paymentConfigQuery.data?.mode ?? null;
+  const paymentMethods = METHODS.map((method) =>
+    method.value !== "pix"
+      ? method
+      : {
+          ...method,
+          label:
+            paymentMode === "infinitepay"
+              ? "Pix ou cartão · InfinitePay"
+              : paymentMode === "unavailable"
+                ? "Pix ou cartão · indisponível"
+                : paymentMode === "demo"
+                  ? "Pix demonstrativo · sem cobrança real"
+                  : "Verificando checkout…",
+        },
+  );
 
   const spacesQuery = useQuery({
     queryKey: ["booking-spaces"],
@@ -181,6 +206,11 @@ function Reservar() {
       return next.length === current.length ? current : next;
     });
   }, [slots]);
+  useEffect(() => {
+    if (paymentMode === "unavailable" && paymentMethod === "pix") {
+      setPaymentMethod("card_onsite");
+    }
+  }, [paymentMode, paymentMethod]);
   const unit = SITE.units.find((item) => item.id === unitId)!;
   const pricing = selectedSpace
     ? calculateBookingPrice(
@@ -270,7 +300,9 @@ function Reservar() {
         await queryClient.invalidateQueries({ queryKey: ["booking-availability", spaceId, date] });
         return;
       }
-      setBooking(result.booking as BookingResult);
+      const createdBooking = result.booking as BookingResult;
+      setBooking(createdBooking);
+      if (createdBooking.checkoutUrl) window.location.assign(createdBooking.checkoutUrl);
     } catch {
       setError("Não foi possível concluir agora. Verifique a conexão e tente novamente.");
     } finally {
@@ -537,8 +569,16 @@ function Reservar() {
                       value={paymentMethod}
                       onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
                     >
-                      {METHODS.map((method) => (
-                        <option key={method.value} value={method.value}>
+                      {paymentMethods.map((method) => (
+                        <option
+                          key={method.value}
+                          value={method.value}
+                          disabled={
+                            method.value === "pix" &&
+                            paymentMode !== "demo" &&
+                            paymentMode !== "infinitepay"
+                          }
+                        >
                           {method.label}
                         </option>
                       ))}
@@ -556,8 +596,21 @@ function Reservar() {
                 </div>
                 <p className="hint">
                   <ShieldCheck size={15} /> Nome, WhatsApp, CPF e endereço ajudam a identificar e
-                  administrar sua reserva. O Pix é demonstrativo, sem cobrança real.
+                  administrar sua reserva.{" "}
+                  {paymentMode === "infinitepay"
+                    ? "O pagamento abre o checkout seguro da InfinitePay; CPF e endereço não são enviados ao provedor."
+                    : paymentMode === "unavailable"
+                      ? "O checkout online está indisponível; escolha pagamento no local."
+                      : paymentMode === "demo"
+                        ? "O Pix é demonstrativo, sem cobrança real."
+                        : "Aguarde a verificação do pagamento online antes de selecionar Pix/cartão."}
                 </p>
+                {paymentConfigQuery.isError && (
+                  <p role="status" className="booking-error">
+                    Não foi possível verificar o checkout agora. O pagamento local continua
+                    disponível; atualize a página para tentar Pix/cartão.
+                  </p>
+                )}
                 <div className="booking-consent-block">
                   <label className="booking-consent">
                     <input type="checkbox" name="privacyConsent" required />
@@ -608,7 +661,17 @@ function Reservar() {
                   {error}
                 </p>
               )}
-              <button className="btn pri lg" type="submit" disabled={!selectedSlots.length || busy}>
+              <button
+                className="btn pri lg"
+                type="submit"
+                disabled={
+                  !selectedSlots.length ||
+                  busy ||
+                  (paymentMethod === "pix" &&
+                    paymentMode !== "demo" &&
+                    paymentMode !== "infinitepay")
+                }
+              >
                 {busy ? (
                   <>
                     <LoaderCircle size={17} className="loading-icon" /> Registrando…
@@ -705,6 +768,11 @@ function BookingConfirmation({
           </p>
           <code>{booking.pixPayload}</code>
         </div>
+      )}
+      {booking.checkoutUrl && (
+        <a className="btn pri lg mt-4" href={booking.checkoutUrl} rel="noopener noreferrer">
+          Continuar para Pix ou cartão na InfinitePay
+        </a>
       )}
       <div className="bt">
         <a

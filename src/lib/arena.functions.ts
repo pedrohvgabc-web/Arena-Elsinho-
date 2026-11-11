@@ -52,6 +52,7 @@ type PublicBookingRow = {
   slot_minutes: number;
   pix_payload: string | null;
   is_simulated: boolean | null;
+  checkout_url: string | null;
 };
 type AdminSessionRow = { id: string };
 type BookingAdminRow = {
@@ -65,6 +66,9 @@ type BookingAdminRow = {
   phone: string;
   payment_method: string;
   payment_status: string;
+  payment_provider: string | null;
+  provider_payment_status: string | null;
+  provider_capture_method: string | null;
   amount_cents: number;
   notes: string | null;
   space_id: string;
@@ -84,8 +88,14 @@ type BookingPendingRow = {
   space_name: string | null;
 };
 type LockedBookingRow = { payment_method: string; payment_status: string; group_code: string };
+type BookingPaymentReviewRow = { provider: string; provider_status: string };
 
 const database = async () => (await import("./db.server")).getDb();
+
+export const getPublicPaymentConfig = createServerFn({ method: "GET" }).handler(async () => {
+  const { getPaymentMode } = await import("./payments.server");
+  return { mode: getPaymentMode() };
+});
 
 async function sha256(s: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -328,10 +338,29 @@ export const createBooking = createServerFn({ method: "POST" })
   .inputValidator(bookingSchema)
   .handler(async ({ data }) => {
     const db = await database();
+    const { getPaymentMode } = await import("./payments.server");
+    const paymentMode = getPaymentMode();
+    if (data.method === "pix" && paymentMode === "unavailable") {
+      return { ok: false as const, error: "O pagamento online está temporariamente indisponível." };
+    }
     // Idempotência: mesma chave devolve a mesma reserva, antes de consumir rate limit.
     const previous =
       (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
-    if (previous[0]) return getPublicBooking(String(previous[0].group_code));
+    if (previous[0]) {
+      const previousCode = String(previous[0].group_code);
+      if (data.method === "pix" && paymentMode === "infinitepay") {
+        try {
+          await (await import("./payment-processing.server")).ensureBookingCheckout(previousCode);
+        } catch {
+          return {
+            ok: false as const,
+            error:
+              "A reserva foi registrada, mas o checkout não abriu. Tente novamente em instantes.",
+          };
+        }
+      }
+      return getPublicBooking(previousCode);
+    }
 
     const phone = normalizePhone(data.phone);
     if (!phone) return { ok: false as const, error: "WhatsApp inválido. Use DDD + número." };
@@ -439,8 +468,12 @@ export const createBooking = createServerFn({ method: "POST" })
         // within this transaction so the payment and all booking rows commit together.
         const amount = pricing.totalCents;
         const { createPixCharge } = await import("./payments.server");
-        const pix =
-          data.method === "pix" ? await createPixCharge({ code, amountCents: amount }) : null;
+        const payment =
+          data.method !== "pix"
+            ? null
+            : paymentMode === "infinitepay"
+              ? { provider: "infinitepay", ref: `ALB-${code}`, payload: null, simulated: false }
+              : await createPixCharge({ code, amountCents: amount });
         for (const [index, booking] of inserted.entries()) {
           // provider_ref is unique in the existing schema; one charge belongs to the
           // first row, while the remaining rows retain their per-slot payment state.
@@ -450,8 +483,8 @@ export const createBooking = createServerFn({ method: "POST" })
               is_simulated, pix_payload
             ) VALUES (
               ${booking.id}::uuid, ${data.method}, ${pricing.perSlotCents},
-              ${pix?.provider ?? "onsite"}, ${index === 0 ? (pix?.ref ?? null) : null},
-              ${pix?.simulated ?? false}, ${index === 0 ? (pix?.payload ?? null) : null}
+              ${payment?.provider ?? "onsite"}, ${index === 0 ? (payment?.ref ?? null) : null},
+              ${payment?.simulated ?? false}, ${index === 0 ? (payment?.payload ?? null) : null}
             )
           `;
         }
@@ -463,6 +496,19 @@ export const createBooking = createServerFn({ method: "POST" })
       });
 
       if (outcome.error) return { ok: false as const, error: outcome.error };
+      if (data.method === "pix" && paymentMode === "infinitepay") {
+        try {
+          await (
+            await import("./payment-processing.server")
+          ).ensureBookingCheckout(String(outcome.code));
+        } catch {
+          return {
+            ok: false as const,
+            error:
+              "A reserva foi registrada, mas o checkout não abriu. Tente novamente em instantes.",
+          };
+        }
+      }
       return getPublicBooking(String(outcome.code));
     } catch (error) {
       const codeFromError = errorCode(error);
@@ -470,8 +516,23 @@ export const createBooking = createServerFn({ method: "POST" })
         // A concurrent retry may have committed the same idempotency key.
         const previousAfterConflict =
           (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
-        if (previousAfterConflict[0])
-          return getPublicBooking(String(previousAfterConflict[0].group_code));
+        if (previousAfterConflict[0]) {
+          const previousCode = String(previousAfterConflict[0].group_code);
+          if (data.method === "pix" && paymentMode === "infinitepay") {
+            try {
+              await (
+                await import("./payment-processing.server")
+              ).ensureBookingCheckout(previousCode);
+            } catch {
+              return {
+                ok: false as const,
+                error:
+                  "A reserva foi registrada, mas o checkout não abriu. Tente novamente em instantes.",
+              };
+            }
+          }
+          return getPublicBooking(previousCode);
+        }
       }
       if (codeFromError === "23P01" || codeFromError === "23505") {
         return {
@@ -493,11 +554,11 @@ async function getPublicBooking(code: string) {
       to_char(b.end_time, 'HH24:MI') AS end_time,
       b.payment_method, b.payment_status, b.amount_cents, b.expires_at::text AS expires_at,
       b.customer_name, s.name AS space_name, s.price_cents AS space_price_cents,
-      s.slot_minutes, p.pix_payload, p.is_simulated
+      s.slot_minutes, p.pix_payload, p.is_simulated, p.checkout_url
     FROM public.bookings b
     LEFT JOIN public.arena_spaces s ON s.id = b.space_id
     LEFT JOIN LATERAL (
-      SELECT pix_payload, is_simulated FROM public.payments
+      SELECT pix_payload, is_simulated, checkout_url FROM public.payments
       WHERE booking_id = b.id ORDER BY created_at LIMIT 1
     ) p ON true
     WHERE b.group_code = ${code}
@@ -529,9 +590,40 @@ async function getPublicBooking(code: string) {
       space: String(first.space_name ?? ""),
       pixPayload: first.pix_payload ?? null,
       pixSimulated: Boolean(first.is_simulated ?? false),
+      checkoutUrl: first.checkout_url ?? null,
     },
   };
 }
+
+const paymentReturnSchema = z.object({
+  orderNsu: z.string().trim().min(3).max(100),
+  transactionNsu: z.string().trim().min(3).max(160),
+  slug: z.string().trim().min(1).max(160),
+});
+
+export const verifyPaymentReturn = createServerFn({ method: "POST" })
+  .inputValidator(paymentReturnSchema)
+  .handler(async ({ data }) => {
+    if (!(await rateLimit(`payment-return:${await clientKey()}`, 30, 60))) {
+      return { status: "processing" as const };
+    }
+    try {
+      const result = await (
+        await import("./payment-processing.server")
+      ).processInfinitePayPayment(
+        {
+          eventId: `return:${data.orderNsu}:${data.transactionNsu}`,
+          orderNsu: data.orderNsu,
+          transactionNsu: data.transactionNsu,
+          slug: data.slug,
+        },
+        "return",
+      );
+      return result;
+    } catch {
+      return { status: "processing" as const };
+    }
+  });
 
 export const submitPrivacyRequest = createServerFn({ method: "POST" })
   .inputValidator(
@@ -558,11 +650,36 @@ export const submitPrivacyRequest = createServerFn({ method: "POST" })
 /* ---------------- Pré-inscrição pública do torneio ---------------- */
 
 async function tournamentRegistrationSuccess(code: string) {
-  const { createPixCharge } = await import("./payments.server");
+  const { createPixCharge, getPaymentMode } = await import("./payments.server");
+  const mode = getPaymentMode();
+  if (mode === "unavailable") {
+    return {
+      ok: false as const,
+      error:
+        "A inscrição foi recebida, mas o pagamento online está indisponível. Tente novamente mais tarde.",
+    };
+  }
+  if (mode === "infinitepay") {
+    try {
+      const checkoutUrl = await (
+        await import("./payment-processing.server")
+      ).ensureTournamentCheckout(code);
+      return { ok: true as const, code, checkoutUrl, pixPayload: null, pixSimulated: false };
+    } catch (error) {
+      return {
+        ok: false as const,
+        error:
+          error instanceof Error && error.message === "TOURNAMENT_REGISTRATION_CANCELLED"
+            ? "Esta pré-inscrição foi cancelada e não pode receber um novo link. Fale com a Arena."
+            : "A pré-inscrição foi registrada, mas o checkout não abriu. Envie novamente em instantes.",
+      };
+    }
+  }
   const pix = await createPixCharge({ code, amountCents: TOURNAMENT.entryFeeCents });
   return {
     ok: true as const,
     code,
+    checkoutUrl: null,
     pixPayload: pix.payload,
     pixSimulated: pix.simulated,
   };
@@ -575,7 +692,15 @@ export const registerTournamentTeam = createServerFn({ method: "POST" })
     if (!phone) return { ok: false as const, error: "WhatsApp inválido. Informe DDD e número." };
 
     // Honeypot: responde com sucesso sem gravar dados para não informar ao bot que foi detectado.
-    if (data.website.trim()) return tournamentRegistrationSuccess(`AL26-${randomCode(8)}`);
+    if (data.website.trim()) {
+      return {
+        ok: true as const,
+        code: `AL26-${randomCode(8)}`,
+        checkoutUrl: null,
+        pixPayload: null,
+        pixSimulated: false,
+      };
+    }
 
     const db = await database();
     const existing = (await db`
@@ -714,7 +839,8 @@ export const adminTournamentRegistrations = createServerFn({ method: "GET" }).ha
   const db = await database();
   const rows = (await db`
     SELECT id::text AS id, registration_code, captain_name, captain_phone, team_name,
-      athletes, status, created_at::text AS created_at
+      athletes, status, payment_provider, payment_status, payment_capture_method,
+      created_at::text AS created_at
     FROM public.tournament_registrations
     ORDER BY created_at DESC
     LIMIT 300
@@ -726,6 +852,9 @@ export const adminTournamentRegistrations = createServerFn({ method: "GET" }).ha
     team_name: string;
     athletes: unknown;
     status: string;
+    payment_provider: string;
+    payment_status: string;
+    payment_capture_method: string | null;
     created_at: string;
   }>;
   return rows.map((row) => ({
@@ -1167,9 +1296,12 @@ export const adminDay = createServerFn({ method: "GET" })
       db`
         SELECT id, booking_code, group_code, booking_date::text AS booking_date,
           to_char(start_time, 'HH24:MI:SS') AS start_time, to_char(end_time, 'HH24:MI:SS') AS end_time,
-          customer_name, phone, payment_method, payment_status, amount_cents, notes,
+          customer_name, phone, payment_method, payment_status,
+          p.provider AS payment_provider, p.status AS provider_payment_status,
+          p.capture_method AS provider_capture_method, amount_cents, notes,
           space_id, created_at::text AS created_at
         FROM public.bookings b
+        LEFT JOIN public.payments p ON p.booking_id = b.id
         WHERE booking_date = ${data.date}::date
           AND EXISTS (
             SELECT 1 FROM public.arena_spaces s WHERE s.id = b.space_id AND s.unit_id IS NULL
@@ -1196,11 +1328,14 @@ export const adminCurrentDay = createServerFn({ method: "GET" })
       SELECT b.id, b.booking_code, b.group_code, b.booking_date::text AS booking_date,
         to_char(b.start_time, 'HH24:MI:SS') AS start_time,
         to_char(b.end_time, 'HH24:MI:SS') AS end_time,
-        b.customer_name, b.phone, b.payment_method, b.payment_status, b.amount_cents,
+        b.customer_name, b.phone, b.payment_method, b.payment_status,
+        p.provider AS payment_provider, p.status AS provider_payment_status,
+        p.capture_method AS provider_capture_method, b.amount_cents,
         b.notes, b.space_id, b.created_at::text AS created_at,
         s.name AS space_name, s.unit_id
       FROM public.bookings b
       INNER JOIN public.arena_spaces s ON s.id = b.space_id
+      LEFT JOIN public.payments p ON p.booking_id = b.id
       WHERE b.booking_date = ${data.date}::date AND s.unit_id IN ('unidade-1', 'unidade-2')
       ORDER BY b.start_time
     `) as unknown as Array<BookingAdminRow & { space_name: string; unit_id: string }>;
@@ -1236,11 +1371,14 @@ export const adminCurrentBookings = createServerFn({ method: "GET" })
       SELECT b.id, b.booking_code, b.group_code, b.booking_date::text AS booking_date,
         to_char(b.start_time, 'HH24:MI:SS') AS start_time,
         to_char(b.end_time, 'HH24:MI:SS') AS end_time,
-        b.customer_name, b.phone, b.payment_method, b.payment_status, b.amount_cents,
+        b.customer_name, b.phone, b.payment_method, b.payment_status,
+        p.provider AS payment_provider, p.status AS provider_payment_status,
+        p.capture_method AS provider_capture_method, b.amount_cents,
         b.notes, b.space_id, b.created_at::text AS created_at,
         s.name AS space_name, s.unit_id
       FROM public.bookings b
       INNER JOIN public.arena_spaces s ON s.id = b.space_id
+      LEFT JOIN public.payments p ON p.booking_id = b.id
       WHERE s.unit_id IN ('unidade-1', 'unidade-2')
         AND b.booking_date BETWEEN ${data.fromDate}::date AND ${data.toDate}::date
       ORDER BY b.booking_date, b.start_time
@@ -1276,7 +1414,7 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       id: z.string().uuid(),
-      action: z.enum(["mark_paid", "cancel", "note"]),
+      action: z.enum(["mark_paid", "cancel", "note", "confirm_received_payment"]),
       note: z.string().max(500).optional(),
     }),
   )
@@ -1284,58 +1422,145 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
     await requireAdmin();
     const db = await database();
     const now = new Date().toISOString();
-    const result = await db.begin(async (tx) => {
-      const bookings = (await tx`
+    try {
+      const result = await db.begin(async (tx) => {
+        const bookings = (await tx`
         SELECT payment_method, payment_status, group_code
         FROM public.bookings WHERE id = ${data.id}::uuid FOR UPDATE
       `) as unknown as LockedBookingRow[];
-      const booking = bookings[0];
-      if (!booking) return { ok: false, error: "Reserva não encontrada." };
+        const booking = bookings[0];
+        if (!booking) return { ok: false, error: "Reserva não encontrada." };
 
-      if (data.action === "mark_paid") {
-        // Confirmação manual pelo administrador; um Pix pode cobrir todo o grupo.
-        if (booking.payment_status !== "pending")
-          return { ok: false, error: "Reserva não está pendente." };
-        await tx`
+        if (data.action === "confirm_received_payment") {
+          const reviewRows = (await tx`
+          SELECT p.provider, p.status AS provider_status
+          FROM public.bookings b
+          INNER JOIN public.payments p ON p.booking_id = b.id
+          WHERE b.group_code = ${booking.group_code}
+          ORDER BY b.id
+          FOR UPDATE OF b, p
+        `) as unknown as BookingPaymentReviewRow[];
+          if (
+            !reviewRows.length ||
+            reviewRows.some(
+              (row) => row.provider !== "infinitepay" || row.provider_status !== "paid",
+            )
+          ) {
+            return {
+              ok: false,
+              error: "A InfinitePay ainda não confirmou todos os pagamentos deste grupo.",
+            };
+          }
+          const elapsed = (await tx`
+          SELECT COUNT(*) FILTER (
+            WHERE (booking_date + end_time) AT TIME ZONE 'America/Porto_Velho' <= now()
+          )::int AS count
+          FROM public.bookings WHERE group_code = ${booking.group_code}
+        `) as unknown as Array<{ count: number }>;
+          if (Number(elapsed[0]?.count ?? 0) > 0) {
+            return {
+              ok: false,
+              error:
+                "O horário já terminou. Não é possível reativar a reserva; contate o cliente e trate eventual estorno diretamente na InfinitePay.",
+            };
+          }
+          const conflicts = (await tx`
+          SELECT COUNT(*)::int AS count
+          FROM public.bookings candidate
+          INNER JOIN public.bookings other
+            ON other.space_id = candidate.space_id
+            AND other.slot && candidate.slot
+            AND other.group_code IS DISTINCT FROM candidate.group_code
+            AND other.payment_status IN ('pending', 'paid')
+          WHERE candidate.group_code = ${booking.group_code}
+        `) as unknown as Array<{ count: number }>;
+          if (Number(conflicts[0]?.count ?? 0) > 0) {
+            return {
+              ok: false,
+              error:
+                "O pagamento foi recebido, mas um ou mais horários já estão ocupados. Contate o cliente e trate eventual estorno diretamente na InfinitePay.",
+            };
+          }
+          await tx`
+          UPDATE public.bookings
+          SET payment_status = 'paid', cancelled_at = NULL, updated_at = ${now}::timestamptz
+          WHERE group_code = ${booking.group_code}
+            AND payment_status IN ('pending', 'cancelled', 'expired', 'failed')
+        `;
+          await tx`
+          INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
+          VALUES ('admin', 'booking.payment_review.confirm', 'booking', ${data.id}, ${JSON.stringify({ groupCode: booking.group_code, provider: "infinitepay" })}::jsonb)
+        `;
+          return { ok: true, error: null };
+        }
+
+        if (data.action === "mark_paid") {
+          // Confirmação manual pelo administrador; um Pix pode cobrir todo o grupo.
+          if (booking.payment_status !== "pending")
+            return { ok: false, error: "Reserva não está pendente." };
+          const providers = (await tx`
+          SELECT provider FROM public.payments
+          WHERE booking_id IN (SELECT id FROM public.bookings WHERE group_code = ${booking.group_code})
+          LIMIT 1
+        `) as unknown as Array<{ provider: string }>;
+          if (providers[0]?.provider === "infinitepay") {
+            return {
+              ok: false,
+              error:
+                "Pagamentos InfinitePay só são confirmados após validação automática do servidor.",
+            };
+          }
+          await tx`
           SELECT id FROM public.bookings
           WHERE group_code = ${booking.group_code} AND payment_status = 'pending'
           ORDER BY id FOR UPDATE
         `;
-        await tx`
+          await tx`
           UPDATE public.bookings SET payment_status = 'paid', updated_at = ${now}::timestamptz
           WHERE group_code = ${booking.group_code} AND payment_status = 'pending'
         `;
-        await tx`
+          await tx`
           UPDATE public.payments SET status = 'paid', paid_at = ${now}::timestamptz, updated_at = ${now}::timestamptz
           WHERE booking_id IN (
             SELECT id FROM public.bookings WHERE group_code = ${booking.group_code} AND payment_status = 'paid'
           )
         `;
-      } else if (data.action === "cancel") {
-        await tx`
+        } else if (data.action === "cancel") {
+          await tx`
           UPDATE public.bookings
           SET payment_status = 'cancelled', cancelled_at = ${now}::timestamptz, updated_at = ${now}::timestamptz
           WHERE group_code = ${booking.group_code} AND payment_status IN ('pending', 'paid')
         `;
-        await tx`
+          await tx`
           UPDATE public.payments SET status = 'cancelled', updated_at = ${now}::timestamptz
           WHERE booking_id IN (
             SELECT id FROM public.bookings WHERE group_code = ${booking.group_code} AND payment_status = 'cancelled'
           )
+            AND status <> 'paid'
         `;
-      } else {
-        await tx`
+        } else {
+          await tx`
           UPDATE public.bookings SET notes = ${(data.note ?? "").replace(/[<>]/g, "")}, updated_at = ${now}::timestamptz
           WHERE id = ${data.id}::uuid
         `;
-      }
-      await tx`
+        }
+        await tx`
         INSERT INTO public.audit_logs (actor, action, entity, entity_id)
         VALUES ('admin', ${`booking.${data.action}`}, 'booking', ${data.id})
       `;
-      return { ok: true, error: null };
-    });
-    return result;
+        return { ok: true, error: null };
+      });
+      return result;
+    } catch (error) {
+      if (data.action === "confirm_received_payment" && errorCode(error) === "23P01") {
+        return {
+          ok: false,
+          error:
+            "O horário foi ocupado durante a revisão. Não foi possível confirmar; contate o cliente e trate eventual estorno diretamente na InfinitePay.",
+        };
+      }
+      throw error;
+    }
   });
 
 const copyHoursSchema = z

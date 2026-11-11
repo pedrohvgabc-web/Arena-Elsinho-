@@ -16,6 +16,7 @@ import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as ReservarRouteImport } from './routes/reservar'
 import { Route as TermosRouteImport } from './routes/termos'
 import { Route as TorneioRouteImport } from './routes/torneio'
+import { Route as PagamentoRetornoRouteImport } from './routes/pagamento.retorno'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const TorneioRoute = TorneioRouteImport.update({
   path: '/torneio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PagamentoRetornoRoute = PagamentoRetornoRouteImport.update({
+  id: '/pagamento/retorno',
+  path: '/pagamento/retorno',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/reservar': typeof ReservarRoute
   '/termos': typeof TermosRoute
   '/torneio': typeof TorneioRoute
+  '/pagamento/retorno': typeof PagamentoRetornoRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/reservar': typeof ReservarRoute
   '/termos': typeof TermosRoute
   '/torneio': typeof TorneioRoute
+  '/pagamento/retorno': typeof PagamentoRetornoRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/reservar': typeof ReservarRoute
   '/termos': typeof TermosRoute
   '/torneio': typeof TorneioRoute
+  '/pagamento/retorno': typeof PagamentoRetornoRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/reservar'
     | '/termos'
     | '/torneio'
+    | '/pagamento/retorno'
     | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/reservar'
     | '/termos'
     | '/torneio'
+    | '/pagamento/retorno'
     | '/api/public/payments/webhook'
   id:
     | '__root__'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/reservar'
     | '/termos'
     | '/torneio'
+    | '/pagamento/retorno'
     | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -132,6 +144,7 @@ export interface RootRouteChildren {
   ReservarRoute: typeof ReservarRoute
   TermosRoute: typeof TermosRoute
   TorneioRoute: typeof TorneioRoute
+  PagamentoRetornoRoute: typeof PagamentoRetornoRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
@@ -186,6 +199,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TorneioRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pagamento/retorno': {
+      id: '/pagamento/retorno'
+      path: '/pagamento/retorno'
+      fullPath: '/pagamento/retorno'
+      preLoaderRoute: typeof PagamentoRetornoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/payments/webhook': {
       id: '/api/public/payments/webhook'
       path: '/api/public/payments/webhook'
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReservarRoute: ReservarRoute,
   TermosRoute: TermosRoute,
   TorneioRoute: TorneioRoute,
+  PagamentoRetornoRoute: PagamentoRetornoRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport

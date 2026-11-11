@@ -12,20 +12,22 @@ export const Route = createFileRoute("/cancelamento")({
     <LegalPage title="Cancelamento e alterações">
       <h2>Agendamentos</h2>
       <p>
-        Os pedidos de agendamento são feitos pelo WhatsApp e ficam sujeitos à confirmação direta da
-        equipe da Arena Leste. Para alterar ou cancelar um horário já confirmado, fale com a equipe
-        pelo mesmo canal e informe a unidade, o dia e o horário combinados.
+        Para alterar ou cancelar um horário, fale com a equipe pelo WhatsApp {SITE.phoneDisplay} e
+        informe o código da reserva, a unidade, o dia e o horário. O site não cancela uma cobrança
+        nem solicita estorno automaticamente.
       </p>
       <h2>Pré-inscrição no torneio</h2>
       <p>
         Para corrigir ou retirar uma pré-inscrição, o capitão deve entrar em contato com a Arena
-        pelo WhatsApp {SITE.phoneDisplay}, informando o código recebido e o nome da equipe. O
-        formulário do site não cobra a taxa e não processa reembolsos.
+        pelo WhatsApp {SITE.phoneDisplay}, informando o código recebido e o nome da equipe. Se houve
+        pagamento via InfinitePay, o cancelamento da inscrição não estorna a cobrança; a solicitação
+        de análise de estorno deve ser tratada com a organização.
       </p>
       <h2>Condições</h2>
       <p>
         Confirmações, prazos, alterações e eventuais condições de devolução são tratadas diretamente
-        pela organização. O site não promete vaga antes do retorno da Arena.
+        pela organização, observada a legislação aplicável. O site não executa estornos por conta
+        própria.
       </p>
     </LegalPage>
   ),

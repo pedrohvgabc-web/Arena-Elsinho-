@@ -12,7 +12,7 @@
 - [x] **Pré-inscrição do campeonato** — página Torneio Novembro Azul, formulário online para exatamente quatro pessoas (capitão + três atletas), solicitando somente o primeiro nome de cada participante, R$150 por equipe, premiação de R$800/R$400/R$200 com troféus e medalhas, e armazenamento separado no Neon.
 - [x] **Admin do torneio e reservas** — exigir a sessão autenticada existente; listar e atualizar inscrições do torneio em área própria; administrar reservas atuais das novas quadras sem misturá-las ao arquivo antigo; auditar ações e não expor dados pessoais publicamente.
 - [x] **Migração incremental para quadras e horários** — migração `0003` validada em branch temporária e aplicada à Neon de produção após autorização; criou os oito novos espaços e as grades fechadas sem apagar ou reescrever reservas históricas nem alterar a tabela do torneio.
-- [x] **Segurança e plataforma** — validação server-side, rate limit, idempotência e checagem de conflitos; dados de inscrição protegidos; manter Render/Neon nos planos gratuitos, conexões atuais e Pix demonstrativo, sem integração de pagamento real.
+- [x] **Segurança e plataforma** — validação server-side, rate limit, idempotência e checagem de conflitos; dados privados protegidos por funções autenticadas; manter Render/Neon e checkout real desligado até aplicar a migração e adicionar os segredos do servidor.
 
 ## Integração do ZIP concluída
 
@@ -38,11 +38,13 @@
 
 ## Reserva: promoção, dados e alinhamento do hero
 
-- [ ] **Aplicar a promoção de horários múltiplos** — exibir um selo circular com “Ao reservar 2 horários ou mais, você paga R$ 50 a hora. Vem aproveitar!!!”; atualizar o total e aplicar o valor promocional no servidor em reservas com dois ou mais horários.
-- [ ] **Centralizar a bola/CTA do hero no cursor** — fazer o centro visual acompanhar o ponteiro, levando em conta o tamanho real do elemento e seu contêiner, sem quebrar o modo móvel nem movimento reduzido.
-- [ ] **Exigir endereço, CPF e confirmação de uso** — solicitar endereço completo e CPF válido durante a reserva; exigir uma caixa de confirmação, com texto amigável e link para a Política de Privacidade, registrando a confirmação junto à reserva.
-- [ ] **Atualizar a Política de Privacidade** — informar a coleta de CPF e endereço para registrar e administrar reservas, sem expor esses campos na confirmação pública ou em mensagens de WhatsApp.
-- [ ] **Integração Pix InfinitePay** — adiada para depois da renovação dos créditos; não integrar nem substituir o pagamento demonstrativo nesta tarefa.
+- [x] **Aplicar a promoção de horários múltiplos** — exibir o benefício e calcular no servidor R$ 50/h em reservas com dois ou mais horários, sem alterar o preço normal de R$ 60/h.
+- [x] **Centralizar a bola/CTA do hero no cursor** — fazer o centro visual acompanhar o ponteiro, respeitando contêiner, telas móveis e movimento reduzido.
+- [x] **Exigir endereço, CPF e confirmação de uso** — validar os dados no servidor, exigir consentimento e registrar a confirmação junto à reserva.
+- [x] **Atualizar a Política de Privacidade** — descrever coleta de CPF/endereço, proteger os campos das respostas públicas/WhatsApp e explicar que não são enviados ao checkout.
+- [x] **Implementar checkout InfinitePay para reservas e torneio** — links únicos Pix/cartão criados no servidor; montante em centavos derivado das regras server-side; retorno e webhook consultam `payment_check`, conferem valor exato, deduplicam eventos e atualizam status; pagamentos tardios ficam em revisão e não reativam automaticamente reserva/equipe cancelada. Nenhuma cobrança de teste foi feita.
+- [x] **Proteger a API Key** — a aplicação lê o segredo exclusivamente de `INFINITEPAY_API_KEY` no servidor; `.env` está ignorado pelo Git; o modo real exige `INFINITEPAY_ENABLED=true` e chave/tag válidas.
+- [ ] **Ativar InfinitePay em produção** — aplicar `0007_infinitepay_checkout.sql`, publicar o código ainda desligado, cadastrar uma nova API Key rotacionada e `INFINITEPAY_HANDLE=pedro-henrique-veira` nos segredos da Render, validar webhook/redirect e só então ligar `INFINITEPAY_ENABLED=true`; não compartilhar a chave no chat nem usar cobrança real de teste sem autorização.
 
 ## Correções operacionais desta solicitação
 

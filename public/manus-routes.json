@@ -2,6 +2,7 @@
   "routes": [
     { "path": "/", "title": "Arena Leste Multi Sports" },
     { "path": "/reservar", "title": "Agendar por unidade" },
+    { "path": "/pagamento/retorno", "title": "Retorno do pagamento" },
     { "path": "/torneio", "title": "Torneio Novembro Azul" },
     { "path": "/admin", "title": "Administração Arena Leste" },
     { "path": "/privacidade", "title": "Privacidade" },

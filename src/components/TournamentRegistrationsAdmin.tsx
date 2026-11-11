@@ -110,6 +110,29 @@ export function TournamentRegistrationsAdmin() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       Código {row.registration_code} · Recebida {date}
                     </p>
+                    <p className="mt-1 text-xs font-semibold text-foreground">
+                      Pagamento:{" "}
+                      {row.payment_provider === "infinitepay"
+                        ? row.payment_status === "paid"
+                          ? `Pago via ${row.payment_capture_method === "credit_card" ? "cartão" : "Pix"}`
+                          : row.payment_status === "expired"
+                            ? "Link expirado"
+                            : row.payment_status === "refunded"
+                              ? "Estornado"
+                              : "Aguardando InfinitePay"
+                        : "Pix demonstrativo · sem cobrança real"}
+                    </p>
+                    {row.status === "cancelled" &&
+                      row.payment_provider === "infinitepay" &&
+                      row.payment_status === "paid" && (
+                        <p
+                          role="alert"
+                          className="mt-2 max-w-xl rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-semibold text-warning"
+                        >
+                          Pagamento recebido, mas a inscrição continua cancelada. Contate o capitão
+                          e, se necessário, faça o estorno manualmente na InfinitePay.
+                        </p>
+                      )}
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-bold ${status.style}`}>
                     {status.label}
@@ -182,9 +205,11 @@ export function TournamentRegistrationsAdmin() {
         </ul>
       )}
       <p className="mt-4 flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-        Marcar como confirmada registra o retorno da organização; não processa pagamento.
-        Cancelamento altera apenas a pré-inscrição.
+        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />O pagamento real só muda após
+        validação no servidor com a InfinitePay. O status da inscrição e o status do pagamento ficam
+        separados; cancelar a inscrição não desativa automaticamente um link já criado nem estorna
+        uma cobrança. Se o pagamento entrar depois, a equipe permanece cancelada e o admin verá um
+        alerta para atendimento/estorno manual.
       </p>
     </section>
   );
