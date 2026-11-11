@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Check, Copy, LoaderCircle, MessageCircle, ShieldCheck, Ticket } from "lucide-react";
 import { SITE, waLink } from "@/lib/site";
 import {
@@ -15,9 +15,14 @@ import {
   ARENA_TZ,
   arenaNow,
   calculateBookingPrice,
+  formatDuration,
   formatBRL,
+  initialPaymentCents,
+  MAX_BOOKING_MINUTES,
   MAX_SLOTS,
+  MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR,
   type PaymentMethod,
+  type PaymentPlan,
 } from "@/lib/arena-rules";
 import { formatCpfInput, normalizeValidCpf } from "@/lib/customer-data";
 
@@ -46,6 +51,9 @@ type BookingResult = {
   method: PaymentMethod;
   status: string;
   amount: number;
+  chargeAmount: number;
+  balanceDue: number;
+  paymentPlan: PaymentPlan;
   promoApplied: boolean;
   expiresAt: string | null;
   firstName: string;
@@ -54,6 +62,7 @@ type BookingResult = {
   pixSimulated: boolean;
   checkoutUrl: string | null;
 };
+type BookingDraft = { name: string; phone: string; cpf: string; address: string; notes: string };
 
 const UNIT_IDS: UnitId[] = ["unidade-1", "unidade-2"];
 const METHODS: Array<{ value: PaymentMethod; label: string }> = [
@@ -133,6 +142,11 @@ function Reservar() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<BookingResult | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentPlan, setPaymentPlan] = useState<PaymentPlan>("full");
+  const [paymentPlanLocked, setPaymentPlanLocked] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<BookingDraft | null>(null);
+  const paymentDialogRef = useRef<HTMLDialogElement>(null);
 
   const paymentConfigQuery = useQuery({
     queryKey: ["public-payment-config"],
@@ -142,6 +156,12 @@ function Reservar() {
     retry: false,
   });
   const paymentMode = paymentConfigQuery.data?.mode ?? null;
+  useEffect(() => {
+    const dialog = paymentDialogRef.current;
+    if (!dialog) return;
+    if (paymentDialogOpen && !dialog.open) dialog.showModal();
+    if (!paymentDialogOpen && dialog.open) dialog.close();
+  }, [paymentDialogOpen]);
   const paymentMethods = METHODS.map((method) =>
     method.value !== "pix"
       ? method
@@ -221,7 +241,20 @@ function Reservar() {
         selectedSlots.length,
       )
     : null;
+  const selectedDurationMinutes = selectedSlots.length * (selectedSpace?.slot_minutes ?? 60);
+  const maxSelectableSlots = Math.min(
+    MAX_SLOTS,
+    Math.floor(MAX_BOOKING_MINUTES / (selectedSpace?.slot_minutes ?? 60)),
+  );
+  const regularHourlyRateCents = selectedSpace
+    ? Math.round((selectedSpace.price_cents * 60) / selectedSpace.slot_minutes)
+    : 6_000;
+  const appliedHourlyRateCents = pricing?.promoApplied
+    ? MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+    : regularHourlyRateCents;
   const totalCents = pricing?.totalCents ?? 0;
+  const chargeCents = initialPaymentCents(totalCents, paymentPlan);
+  const balanceDueCents = Math.max(0, totalCents - chargeCents);
 
   function resetIdempotency() {
     setIdempotencyKey(globalThis.crypto.randomUUID());
@@ -248,14 +281,18 @@ function Reservar() {
     resetIdempotency();
   }
   function chooseTime(nextStart: string) {
-    const selectedStarts = selectedSlots.map((slot) => slot.start);
-    if (selectedStarts.includes(nextStart)) {
-      setStarts(selectedStarts.filter((value) => value !== nextStart));
-    } else if (selectedStarts.length >= MAX_SLOTS) {
-      setError(`Você pode selecionar até ${MAX_SLOTS} horários por reserva.`);
+    if (starts.includes(nextStart)) {
+      setStarts((current) => current.filter((value) => value !== nextStart));
+    } else if (
+      starts.length >= maxSelectableSlots ||
+      (starts.length + 1) * (selectedSpace?.slot_minutes ?? 60) > MAX_BOOKING_MINUTES
+    ) {
+      setError("Você pode reservar até 16 horas por pedido.");
       return;
     } else {
-      setStarts([...selectedStarts, nextStart].sort());
+      setStarts((current) =>
+        current.includes(nextStart) ? current : [...current, nextStart].sort(),
+      );
     }
     resetIdempotency();
   }
@@ -278,6 +315,26 @@ function Reservar() {
       setError("Confirme o uso dos dados para continuar.");
       return;
     }
+    const draft: BookingDraft = {
+      name: String(form.get("name") ?? ""),
+      phone: String(form.get("phone") ?? ""),
+      cpf,
+      address,
+      notes: String(form.get("notes") ?? ""),
+    };
+    setPendingDraft(draft);
+    setError(null);
+    if (paymentMethod === "pix" && paymentMode === "infinitepay") {
+      setPaymentPlan("full");
+      setPaymentPlanLocked(false);
+      setPaymentDialogOpen(true);
+      return;
+    }
+    await submitDraft(draft, "full");
+  }
+
+  async function submitDraft(draft: BookingDraft, selectedPlan: PaymentPlan) {
+    if (!selectedSpace || !date || !selectedSlots.length) return;
     setBusy(true);
     setError(null);
     try {
@@ -287,23 +344,29 @@ function Reservar() {
           spaceId: selectedSpace.id,
           date,
           starts: selectedSlots.map((slot) => slot.start),
-          name: String(form.get("name") ?? ""),
-          phone: String(form.get("phone") ?? ""),
-          cpf,
-          address,
+          name: draft.name,
+          phone: draft.phone,
+          cpf: draft.cpf,
+          address: draft.address,
           privacyConsent: true,
-          notes: String(form.get("notes") ?? ""),
+          notes: draft.notes,
           method: paymentMethod,
+          paymentPlan: selectedPlan,
           idempotencyKey,
         },
       });
       if (!result.ok) {
         setError(result.error);
+        if ("existingPaymentPlan" in result) {
+          setPaymentPlan(result.existingPaymentPlan);
+          setPaymentPlanLocked(true);
+        }
         await queryClient.invalidateQueries({ queryKey: ["booking-availability", spaceId, date] });
         return;
       }
       const createdBooking = result.booking as BookingResult;
       setBooking(createdBooking);
+      setPaymentDialogOpen(false);
       if (createdBooking.checkoutUrl) window.location.assign(createdBooking.checkoutUrl);
     } catch {
       setError("Não foi possível concluir agora. Verifique a conexão e tente novamente.");
@@ -318,6 +381,10 @@ function Reservar() {
     setDate(null);
     setStarts([]);
     setIdempotencyKey(globalThis.crypto.randomUUID());
+    setPaymentPlan("full");
+    setPaymentPlanLocked(false);
+    setPendingDraft(null);
+    setPaymentDialogOpen(false);
   }
 
   const contactMessage = booking
@@ -445,24 +512,45 @@ function Reservar() {
               <div
                 className="booking-promo"
                 role="note"
-                aria-label="Ao reservar dois horários ou mais, você paga cinquenta reais a hora. Vem aproveitar."
+                aria-label={
+                  regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+                    ? "Ao reservar mais de uma hora, a tarifa promocional é cinquenta reais por hora."
+                    : `Tarifa atual: ${formatBRL(regularHourlyRateCents)} por hora; a promoção não aumenta o valor.`
+                }
               >
-                <span>Ao reservar</span>
+                <span>Reservando</span>
                 <strong>
-                  2 horários
+                  mais de 1 hora
                   <br />
-                  ou mais
+                  no total
                 </strong>
-                <span>você paga</span>
-                <b>R$ 50</b>
-                <span>a hora · Vem aproveitar!!!</span>
+                <span>
+                  {regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+                    ? "você paga"
+                    : "tarifa atual"}
+                </span>
+                <b>
+                  {formatBRL(
+                    regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+                      ? MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+                      : regularHourlyRateCents,
+                  )}
+                </b>
+                <span>
+                  {regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+                    ? "por hora · Vem aproveitar!!!"
+                    : "por hora; a promoção não aumenta a tarifa"}
+                </span>
               </div>
               <p className="booking-promo-hint">
-                O total é atualizado automaticamente ao selecionar 2 horários ou mais.
+                O preço considera a duração real selecionada e é recalculado pelo servidor. Você
+                pode reservar até 16 horas por pedido, se a agenda estiver livre.
               </p>
 
               <fieldset className={!date ? "lk" : ""} disabled={!date}>
-                <legend className="mono">3 · Horários · selecione um ou mais</legend>
+                <legend className="mono">
+                  3 · Horários · até {maxSelectableSlots} blocos (máximo de 16 horas)
+                </legend>
                 {availabilityQuery.isLoading ? (
                   <p className="hint">
                     <LoaderCircle size={16} className="loading-icon" /> Consultando horários…
@@ -600,7 +688,7 @@ function Reservar() {
                   <ShieldCheck size={15} /> Nome, WhatsApp, CPF e endereço ajudam a identificar e
                   administrar sua reserva.{" "}
                   {paymentMode === "infinitepay"
-                    ? "O pagamento abre o checkout seguro da InfinitePay; CPF e endereço não são enviados ao provedor."
+                    ? "Nome e WhatsApp podem ser pré-preenchidos no checkout. A InfinitePay ainda pode pedir confirmação de contato; CPF e endereço ficam somente com a Arena."
                     : paymentMode === "unavailable"
                       ? "O checkout online está indisponível; escolha pagamento no local."
                       : paymentMode === "demo"
@@ -617,8 +705,9 @@ function Reservar() {
                   <label className="booking-consent">
                     <input type="checkbox" name="privacyConsent" required />
                     <span>
-                      Autorizo o uso dos dados que informei para registrar, confirmar e administrar
-                      esta reserva.
+                      Autorizo o uso dos dados para administrar esta reserva. Se eu escolher
+                      InfinitePay, nome e WhatsApp podem ser enviados para pré-preencher o checkout;
+                      CPF e endereço não são enviados.
                     </span>
                   </label>
                   <p className="booking-privacy-copy">
@@ -642,18 +731,18 @@ function Reservar() {
                 <b>{date ? dateLabel(date) : "Escolha uma data"}</b>
               </div>
               <div className="summaryline">
-                <span>Horários</span>
+                <span>Duração selecionada</span>
                 <b>
                   {selectedSlots.length
-                    ? selectedSlots.map(formatSlot).join(", ")
+                    ? `${formatDuration(selectedDurationMinutes)} (${selectedSlots.length} ${selectedSlots.length === 1 ? "bloco" : "blocos"}) · ${selectedSlots.map(formatSlot).join(", ")}`
                     : "Selecione um ou mais horários"}
                 </b>
               </div>
               <div className="summarytotal">
                 <span>
-                  Total estimado
+                  Total da reserva
                   {selectedSlots.length
-                    ? ` · ${selectedSlots.length} horário(s)${pricing?.promoApplied ? " · promoção R$ 50/h" : ""}`
+                    ? ` · ${formatDuration(selectedDurationMinutes)} · ${formatBRL(appliedHourlyRateCents)}/h${pricing?.promoApplied ? " promocional" : ""}`
                     : ""}
                 </span>
                 <b>{formatBRL(totalCents)}</b>
@@ -698,6 +787,113 @@ function Reservar() {
             </aside>
           </form>
         )}
+        <dialog
+          ref={paymentDialogRef}
+          className="booking-payment-dialog"
+          aria-labelledby="booking-payment-title"
+          aria-modal="true"
+          onCancel={(event) => {
+            event.preventDefault();
+            if (!busy) setPaymentDialogOpen(false);
+          }}
+          onClose={() => setPaymentDialogOpen(false)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !busy) setPaymentDialogOpen(false);
+          }}
+        >
+          <div className="booking-payment-dialog__top">
+            <span className="mono">Última etapa · pagamento seguro</span>
+            <button
+              type="button"
+              className="booking-payment-dialog__close"
+              onClick={() => setPaymentDialogOpen(false)}
+              disabled={busy}
+              aria-label="Fechar escolha de pagamento"
+            >
+              ×
+            </button>
+          </div>
+          <h2 id="booking-payment-title">Como prefere pagar?</h2>
+          <p className="booking-payment-dialog__intro">
+            {formatDuration(selectedDurationMinutes)} · Total da reserva:{" "}
+            <strong>{formatBRL(totalCents)}</strong>
+          </p>
+          <fieldset className="booking-payment-choices" disabled={busy || paymentPlanLocked}>
+            <legend className="sr-only">Escolha quanto pagar agora</legend>
+            <label className="booking-payment-choice">
+              <input
+                type="radio"
+                name="booking-payment-plan"
+                value="deposit_30"
+                checked={paymentPlan === "deposit_30"}
+                onChange={() => setPaymentPlan("deposit_30")}
+              />
+              <span>
+                <strong>Entrada · 30%</strong>
+                <b>{formatBRL(initialPaymentCents(totalCents, "deposit_30"))}</b>
+                <small>
+                  Saldo após a entrada:{" "}
+                  {formatBRL(totalCents - initialPaymentCents(totalCents, "deposit_30"))}
+                </small>
+              </span>
+            </label>
+            <label className="booking-payment-choice">
+              <input
+                type="radio"
+                name="booking-payment-plan"
+                value="full"
+                checked={paymentPlan === "full"}
+                onChange={() => setPaymentPlan("full")}
+              />
+              <span>
+                <strong>Pagar valor integral</strong>
+                <b>{formatBRL(totalCents)}</b>
+                <small>Quita o total da reserva nesta cobrança.</small>
+              </span>
+            </label>
+          </fieldset>
+          <p className="booking-payment-dialog__note">
+            A cobrança de {formatBRL(chargeCents)} será gerada pela InfinitePay.
+            {balanceDueCents > 0
+              ? ` O saldo de ${formatBRL(balanceDueCents)} não será incluído nesta cobrança inicial.`
+              : " Esta opção paga o total informado."}
+          </p>
+          {paymentPlanLocked && (
+            <p className="booking-payment-dialog__note">
+              A reserva já foi registrada com este plano. Mantenha a mesma opção para tentar abrir o
+              checkout novamente.
+            </p>
+          )}
+          {error && (
+            <p className="booking-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="booking-payment-dialog__actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setPaymentDialogOpen(false)}
+              disabled={busy}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="btn pri lg"
+              disabled={busy || !pendingDraft}
+              onClick={() => pendingDraft && void submitDraft(pendingDraft, paymentPlan)}
+            >
+              {busy ? (
+                <>
+                  <LoaderCircle size={17} className="loading-icon" /> Preparando checkout…
+                </>
+              ) : (
+                `Seguir para pagamento · ${formatBRL(chargeCents)}`
+              )}
+            </button>
+          </div>
+        </dialog>
       </main>
     </div>
   );
@@ -738,7 +934,11 @@ function BookingConfirmation({
         {date} · {booking.slots.map(formatSlot).join(", ")}
       </p>
       <p className="hint">
-        Sua solicitação foi registrada online. Guarde o código e aguarde a confirmação da equipe.
+        {booking.checkoutUrl
+          ? "Sua reserva está aguardando a confirmação da cobrança pela InfinitePay. Guarde o código; o retorno do checkout será validado pelo servidor."
+          : booking.method === "pix" && booking.pixSimulated
+            ? "Sua solicitação foi registrada em modo demonstrativo; este código não confirma pagamento."
+            : "Sua solicitação foi registrada online. Guarde o código e aguarde a confirmação da equipe."}
       </p>
       <div className="booking-confirm-meta">
         <div>
@@ -754,10 +954,22 @@ function BookingConfirmation({
           </button>
         </div>
         <div>
-          <span className="mono">Total estimado</span>
+          <span className="mono">Total da reserva</span>
           <b>{formatBRL(booking.amount)}</b>
         </div>
       </div>
+      {booking.method === "pix" && booking.paymentPlan === "deposit_30" && (
+        <div className="booking-confirm-meta">
+          <div>
+            <span className="mono">Cobrança inicial · 30%</span>
+            <b>{formatBRL(booking.chargeAmount)}</b>
+          </div>
+          <div>
+            <span className="mono">Saldo restante</span>
+            <b>{formatBRL(booking.balanceDue)}</b>
+          </div>
+        </div>
+      )}
       {booking.promoApplied && (
         <p className="booking-promo-applied">Promoção aplicada: R$ 50 por hora.</p>
       )}

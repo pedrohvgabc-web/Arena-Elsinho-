@@ -19,6 +19,7 @@ import {
   formatBRL,
   PAYMENT_LABEL,
   STATUS_LABEL,
+  verifiedPaymentAmountCents,
   type PaymentMethod,
   type PaymentStatus,
 } from "@/lib/arena-rules";
@@ -38,6 +39,7 @@ type BookingRow = {
   payment_provider: string | null;
   provider_payment_status: string | null;
   provider_capture_method: string | null;
+  provider_amount_cents: number | null;
   amount_cents: number;
   notes: string | null;
   space_id: string;
@@ -57,6 +59,9 @@ type BookingGroup = {
   status: PaymentStatus;
   paymentNeedsReview: boolean;
   amountCents: number;
+  chargeAmountCents: number;
+  balanceDueCents: number;
+  receivedAmountCents: number;
   slots: Array<{ start: string; end: string }>;
 };
 
@@ -124,6 +129,12 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
               ? "Cartão · InfinitePay"
               : "Pix ou cartão · InfinitePay"
           : PAYMENT_LABEL[first.payment_method];
+      const amountCents = items.reduce((sum, row) => sum + Number(row.amount_cents), 0);
+      const chargeAmountCents = items.reduce(
+        (sum, row) => sum + Number(row.provider_amount_cents ?? 0),
+        0,
+      );
+      const balanceDueCents = Math.max(0, amountCents - chargeAmountCents);
       return {
         id: first.id,
         code,
@@ -135,7 +146,17 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
         paymentLabel,
         status,
         paymentNeedsReview,
-        amountCents: items.reduce((sum, row) => sum + Number(row.amount_cents), 0),
+        amountCents,
+        chargeAmountCents,
+        balanceDueCents,
+        receivedAmountCents: verifiedPaymentAmountCents(
+          items.map((row) => ({
+            provider: row.payment_provider,
+            providerStatus: row.provider_payment_status,
+            bookingStatus: row.payment_status,
+            amountCents: row.provider_amount_cents,
+          })),
+        ),
         slots: items.map((row) => ({ start: row.start_time, end: row.end_time })),
       };
     })
@@ -177,11 +198,11 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
     () => groupBookings((query.data?.bookings ?? []) as BookingRow[]),
     [query.data?.bookings],
   );
-  const pending = groups.filter((booking) => booking.status === "pending").length;
+  const attentionRequired = groups.filter(
+    (booking) => booking.status === "pending" || booking.paymentNeedsReview,
+  ).length;
   const confirmed = groups.filter((booking) => booking.status === "paid").length;
-  const paidAmount = groups
-    .filter((booking) => booking.status === "paid")
-    .reduce((sum, booking) => sum + booking.amountCents, 0);
+  const paidAmount = groups.reduce((sum, booking) => sum + booking.receivedAmountCents, 0);
   const filteredGroups = useMemo(() => {
     const term = searchText.trim().toLocaleLowerCase("pt-BR");
     return groups.filter((booking) => {
@@ -326,8 +347,9 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
             <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {[
                 ["Reservas", String(groups.length)],
-                ["Aguardando confirmação", String(pending)],
-                ["Confirmadas", `${confirmed} · ${formatBRL(paidAmount)}`],
+                ["Aguardando pagamento/revisão", String(attentionRequired)],
+                ["Confirmadas", String(confirmed)],
+                ["Recebido · verificado", formatBRL(paidAmount)],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -414,7 +436,9 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${BADGE[booking.status]}`}
                         >
-                          {STATUS_LABEL[booking.status]}
+                          {booking.status === "paid" && booking.balanceDueCents > 0
+                            ? "Entrada paga · saldo pendente"
+                            : STATUS_LABEL[booking.status]}
                         </span>
                       </div>
                       {booking.paymentNeedsReview && (
@@ -429,9 +453,36 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                         </p>
                       )}
                       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                        <strong className="font-display text-xl">
-                          {formatBRL(booking.amountCents)}
-                        </strong>
+                        <div>
+                          <strong className="font-display text-xl">
+                            Reserva: {formatBRL(booking.amountCents)}
+                          </strong>
+                          {booking.paymentLabel.includes("InfinitePay") ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {booking.receivedAmountCents > 0
+                                ? booking.paymentNeedsReview
+                                  ? "Recebido · revisão necessária"
+                                  : "Recebido"
+                                : "Cobrança pendente"}
+                              :{" "}
+                              {formatBRL(
+                                booking.receivedAmountCents > 0
+                                  ? booking.receivedAmountCents
+                                  : booking.chargeAmountCents,
+                              )}{" "}
+                              · total: {formatBRL(booking.amountCents)} · saldo:{" "}
+                              {formatBRL(booking.balanceDueCents)}
+                            </p>
+                          ) : booking.balanceDueCents > 0 ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {booking.receivedAmountCents > 0
+                                ? "Entrada recebida"
+                                : "Entrada no checkout"}
+                              : {formatBRL(booking.chargeAmountCents)} · saldo:{" "}
+                              {formatBRL(booking.balanceDueCents)}
+                            </p>
+                          ) : null}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           <a
                             href={`https://wa.me/55${booking.phone}?text=${encodeURIComponent(message)}`}

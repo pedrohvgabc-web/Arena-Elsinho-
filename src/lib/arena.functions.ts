@@ -6,11 +6,15 @@ import {
   slotsFor,
   arenaNow,
   calculateBookingPrice,
+  initialPaymentCents,
+  splitAmountCents,
   MAX_SLOTS,
+  MAX_BOOKING_MINUTES,
   weekdayOf,
   toMin,
   validateOpeningWindows,
   type OpeningWindow,
+  type PaymentPlan,
 } from "./arena-rules";
 import { normalizeValidCpf } from "./customer-data";
 import { tournamentRegistrationSchema } from "./tournament-schema";
@@ -45,6 +49,7 @@ type PublicBookingRow = {
   payment_method: string;
   payment_status: string;
   amount_cents: number;
+  payment_amount_cents: number | null;
   expires_at: string | null;
   customer_name: string;
   space_name: string | null;
@@ -69,6 +74,7 @@ type BookingAdminRow = {
   payment_provider: string | null;
   provider_payment_status: string | null;
   provider_capture_method: string | null;
+  provider_amount_cents: number | null;
   amount_cents: number;
   notes: string | null;
   space_id: string;
@@ -331,6 +337,7 @@ const bookingSchema = z.object({
     .refine((accepted) => accepted, "Confirme o uso dos dados para continuar."),
   notes: z.string().trim().max(500).optional().default(""),
   method: z.enum(["pix", "card_onsite", "cash_onsite"]),
+  paymentPlan: z.enum(["full", "deposit_30"]).default("full"),
   idempotencyKey: z.string().uuid(),
 });
 
@@ -340,6 +347,7 @@ export const createBooking = createServerFn({ method: "POST" })
     const db = await database();
     const { getPaymentMode } = await import("./payments.server");
     const paymentMode = getPaymentMode();
+    const paymentPlan: PaymentPlan = data.method === "pix" ? data.paymentPlan : "full";
     if (data.method === "pix" && paymentMode === "unavailable") {
       return { ok: false as const, error: "O pagamento online está temporariamente indisponível." };
     }
@@ -348,6 +356,19 @@ export const createBooking = createServerFn({ method: "POST" })
       (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
     if (previous[0]) {
       const previousCode = String(previous[0].group_code);
+      const previousBooking = await getPublicBooking(previousCode);
+      if (
+        previousBooking.ok &&
+        data.method === "pix" &&
+        previousBooking.booking.paymentPlan !== paymentPlan
+      ) {
+        return {
+          ok: false as const,
+          error:
+            "Esta reserva já foi iniciada com outra opção de pagamento. Use o plano selecionado originalmente.",
+          existingPaymentPlan: previousBooking.booking.paymentPlan,
+        };
+      }
       if (data.method === "pix" && paymentMode === "infinitepay") {
         try {
           await (await import("./payment-processing.server")).ensureBookingCheckout(previousCode);
@@ -421,6 +442,9 @@ export const createBooking = createServerFn({ method: "POST" })
           if (!valid.ok) return { code: null, error: valid.reason };
           slots.push({ start, end: valid.end });
         }
+        if (slots.length * Number(space.slot_minutes) > MAX_BOOKING_MINUTES) {
+          return { code: null, error: "Você pode reservar até 16 horas por pedido." };
+        }
 
         // Give the customer a clear response before creating a payment; the exclusion
         // constraint remains the final protection against concurrent reservations.
@@ -441,6 +465,8 @@ export const createBooking = createServerFn({ method: "POST" })
           Number(space.slot_minutes),
           slots.length,
         );
+        const chargeAmount = initialPaymentCents(pricing.totalCents, paymentPlan);
+        const paymentShares = splitAmountCents(chargeAmount, slots.length);
         const inserted: Array<{ id: string }> = [];
         for (const [index, slot] of slots.entries()) {
           // The legacy schema has a unique idempotency_key per booking row. Keep the
@@ -464,16 +490,15 @@ export const createBooking = createServerFn({ method: "POST" })
           if (rows[0]) inserted.push({ id: String(rows[0].id) });
         }
 
-        // One charge (and one QR Code) covers the whole reservation. It is created
-        // within this transaction so the payment and all booking rows commit together.
-        const amount = pricing.totalCents;
+        // One checkout covers the grouped reservation; the selected plan determines
+        // whether its amount is the 30% entry or the full total.
         const { createPixCharge } = await import("./payments.server");
         const payment =
           data.method !== "pix"
             ? null
             : paymentMode === "infinitepay"
               ? { provider: "infinitepay", ref: `ALB-${code}`, payload: null, simulated: false }
-              : await createPixCharge({ code, amountCents: amount });
+              : await createPixCharge({ code, amountCents: chargeAmount });
         for (const [index, booking] of inserted.entries()) {
           // provider_ref is unique in the existing schema; one charge belongs to the
           // first row, while the remaining rows retain their per-slot payment state.
@@ -482,7 +507,7 @@ export const createBooking = createServerFn({ method: "POST" })
               booking_id, method, amount_cents, provider, provider_ref,
               is_simulated, pix_payload
             ) VALUES (
-              ${booking.id}::uuid, ${data.method}, ${pricing.perSlotCents},
+              ${booking.id}::uuid, ${data.method}, ${paymentShares[index] ?? 0},
               ${payment?.provider ?? "onsite"}, ${index === 0 ? (payment?.ref ?? null) : null},
               ${payment?.simulated ?? false}, ${index === 0 ? (payment?.payload ?? null) : null}
             )
@@ -490,7 +515,7 @@ export const createBooking = createServerFn({ method: "POST" })
         }
         await tx`
           INSERT INTO public.audit_logs (actor, action, entity, entity_id, details)
-          VALUES ('public', 'booking.create', 'booking', ${inserted[0]?.id ?? null}, ${JSON.stringify({ code, slots: slots.length, promoApplied: pricing.promoApplied })}::jsonb)
+          VALUES ('public', 'booking.create', 'booking', ${inserted[0]?.id ?? null}, ${JSON.stringify({ code, slots: slots.length, promoApplied: pricing.promoApplied, totalAmountCents: pricing.totalCents, chargeAmountCents: chargeAmount, paymentPlan })}::jsonb)
         `;
         return { code, error: null as string | null };
       });
@@ -509,7 +534,20 @@ export const createBooking = createServerFn({ method: "POST" })
           };
         }
       }
-      return getPublicBooking(String(outcome.code));
+      const bookingResult = await getPublicBooking(String(outcome.code));
+      if (
+        bookingResult.ok &&
+        data.method === "pix" &&
+        bookingResult.booking.paymentPlan !== paymentPlan
+      ) {
+        return {
+          ok: false as const,
+          error:
+            "Esta reserva já foi iniciada com outra opção de pagamento. Use o plano selecionado originalmente.",
+          existingPaymentPlan: bookingResult.booking.paymentPlan,
+        };
+      }
+      return bookingResult;
     } catch (error) {
       const codeFromError = errorCode(error);
       if (codeFromError === "23505") {
@@ -518,6 +556,19 @@ export const createBooking = createServerFn({ method: "POST" })
           (await db`SELECT group_code FROM public.bookings WHERE idempotency_key = ${data.idempotencyKey} LIMIT 1`) as unknown as GroupCodeRow[];
         if (previousAfterConflict[0]) {
           const previousCode = String(previousAfterConflict[0].group_code);
+          const previousBooking = await getPublicBooking(previousCode);
+          if (
+            previousBooking.ok &&
+            data.method === "pix" &&
+            previousBooking.booking.paymentPlan !== paymentPlan
+          ) {
+            return {
+              ok: false as const,
+              error:
+                "Esta reserva já foi iniciada com outra opção de pagamento. Use o plano selecionado originalmente.",
+              existingPaymentPlan: previousBooking.booking.paymentPlan,
+            };
+          }
           if (data.method === "pix" && paymentMode === "infinitepay") {
             try {
               await (
@@ -531,7 +582,7 @@ export const createBooking = createServerFn({ method: "POST" })
               };
             }
           }
-          return getPublicBooking(previousCode);
+          return previousBooking;
         }
       }
       if (codeFromError === "23P01" || codeFromError === "23505") {
@@ -554,11 +605,12 @@ async function getPublicBooking(code: string) {
       to_char(b.end_time, 'HH24:MI') AS end_time,
       b.payment_method, b.payment_status, b.amount_cents, b.expires_at::text AS expires_at,
       b.customer_name, s.name AS space_name, s.price_cents AS space_price_cents,
-      s.slot_minutes, p.pix_payload, p.is_simulated, p.checkout_url
+      s.slot_minutes, p.pix_payload, p.is_simulated, p.checkout_url,
+      p.amount_cents AS payment_amount_cents
     FROM public.bookings b
     LEFT JOIN public.arena_spaces s ON s.id = b.space_id
     LEFT JOIN LATERAL (
-      SELECT pix_payload, is_simulated, checkout_url FROM public.payments
+      SELECT pix_payload, is_simulated, checkout_url, amount_cents FROM public.payments
       WHERE booking_id = b.id ORDER BY created_at LIMIT 1
     ) p ON true
     WHERE b.group_code = ${code}
@@ -568,11 +620,14 @@ async function getPublicBooking(code: string) {
   const first = rows[0]!;
   const last = rows[rows.length - 1]!;
   const amount = rows.reduce((sum, row) => sum + Number(row.amount_cents), 0);
+  const chargeAmount = rows.reduce((sum, row) => sum + Number(row.payment_amount_cents ?? 0), 0);
+  const balanceDue = Math.max(0, amount - chargeAmount);
   const expectedPrice = calculateBookingPrice(
     Number(first.space_price_cents ?? 0),
     Number(first.slot_minutes),
     rows.length,
   );
+  const paymentPlan: PaymentPlan = balanceDue > 0 ? "deposit_30" : "full";
   return {
     ok: true as const,
     booking: {
@@ -584,6 +639,9 @@ async function getPublicBooking(code: string) {
       method: first.payment_method,
       status: first.payment_status,
       amount,
+      chargeAmount,
+      balanceDue,
+      paymentPlan,
       promoApplied: expectedPrice.promoApplied && amount === expectedPrice.totalCents,
       expiresAt: first.expires_at,
       firstName: String(first.customer_name).split(" ")[0],
@@ -1294,19 +1352,20 @@ export const adminDay = createServerFn({ method: "GET" })
     `;
     const [bookingRows, spaceRows] = await Promise.all([
       db`
-        SELECT id, booking_code, group_code, booking_date::text AS booking_date,
-          to_char(start_time, 'HH24:MI:SS') AS start_time, to_char(end_time, 'HH24:MI:SS') AS end_time,
-          customer_name, phone, payment_method, payment_status,
-          p.provider AS payment_provider, p.status AS provider_payment_status,
-          p.capture_method AS provider_capture_method, amount_cents, notes,
-          space_id, created_at::text AS created_at
+        SELECT b.id, b.booking_code, b.group_code, b.booking_date::text AS booking_date,
+        to_char(b.start_time, 'HH24:MI:SS') AS start_time, to_char(b.end_time, 'HH24:MI:SS') AS end_time,
+        b.customer_name, b.phone, b.payment_method, b.payment_status,
+        p.provider AS payment_provider, p.status AS provider_payment_status,
+        p.capture_method AS provider_capture_method, p.amount_cents AS provider_amount_cents,
+        b.amount_cents, b.notes,
+        b.space_id, b.created_at::text AS created_at
         FROM public.bookings b
         LEFT JOIN public.payments p ON p.booking_id = b.id
-        WHERE booking_date = ${data.date}::date
+        WHERE b.booking_date = ${data.date}::date
           AND EXISTS (
             SELECT 1 FROM public.arena_spaces s WHERE s.id = b.space_id AND s.unit_id IS NULL
           )
-        ORDER BY start_time
+        ORDER BY b.start_time
       `,
       db`SELECT id, name FROM public.arena_spaces WHERE unit_id IS NULL ORDER BY sort_order`,
     ]);
@@ -1330,7 +1389,8 @@ export const adminCurrentDay = createServerFn({ method: "GET" })
         to_char(b.end_time, 'HH24:MI:SS') AS end_time,
         b.customer_name, b.phone, b.payment_method, b.payment_status,
         p.provider AS payment_provider, p.status AS provider_payment_status,
-        p.capture_method AS provider_capture_method, b.amount_cents,
+        p.capture_method AS provider_capture_method, p.amount_cents AS provider_amount_cents,
+        b.amount_cents,
         b.notes, b.space_id, b.created_at::text AS created_at,
         s.name AS space_name, s.unit_id
       FROM public.bookings b
@@ -1373,7 +1433,8 @@ export const adminCurrentBookings = createServerFn({ method: "GET" })
         to_char(b.end_time, 'HH24:MI:SS') AS end_time,
         b.customer_name, b.phone, b.payment_method, b.payment_status,
         p.provider AS payment_provider, p.status AS provider_payment_status,
-        p.capture_method AS provider_capture_method, b.amount_cents,
+        p.capture_method AS provider_capture_method, p.amount_cents AS provider_amount_cents,
+        b.amount_cents,
         b.notes, b.space_id, b.created_at::text AS created_at,
         s.name AS space_name, s.unit_id
       FROM public.bookings b

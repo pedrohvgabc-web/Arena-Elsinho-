@@ -4,6 +4,7 @@ export const SLOT_MINUTES = 60;
 
 export type OpeningWindow = { start: string; end: string };
 export type PaymentMethod = "pix" | "card_onsite" | "cash_onsite";
+export type PaymentPlan = "full" | "deposit_30";
 export type PaymentStatus = "pending" | "paid" | "cancelled" | "expired" | "failed";
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   pix: "Pix demonstrativo",
@@ -172,7 +173,9 @@ export function validateSlot(
 export const formatBRL = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export const MAX_SLOTS = 8;
+// A 16-hour booking can contain up to 32 slots when the configured slot is 30 minutes.
+export const MAX_BOOKING_MINUTES = 16 * 60;
+export const MAX_SLOTS = MAX_BOOKING_MINUTES / 30;
 export const totalCents = (priceCents: number, count: number) => priceCents * Math.max(0, count);
 
 export const MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR = 5_000;
@@ -184,12 +187,58 @@ export function calculateBookingPrice(priceCents: number, slotMinutes: number, c
   if (!quantity || !validDuration) return { perSlotCents: 0, totalCents: 0, promoApplied: false };
 
   const regularHourlyRate = (regularPrice * 60) / slotMinutes;
-  const promoApplied = quantity >= 2 && regularHourlyRate > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR;
+  const totalDurationMinutes = quantity * slotMinutes;
+  const promoApplied =
+    totalDurationMinutes > 60 && regularHourlyRate > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR;
   const perSlotCents = promoApplied
     ? Math.round((MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR * slotMinutes) / 60)
     : regularPrice;
 
   return { perSlotCents, totalCents: perSlotCents * quantity, promoApplied };
+}
+
+export function formatDuration(minutes: number) {
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
+  const hours = Math.floor(safeMinutes / 60);
+  const remainingMinutes = safeMinutes % 60;
+  return (
+    [hours ? `${hours} h` : null, remainingMinutes ? `${remainingMinutes} min` : null]
+      .filter(Boolean)
+      .join(" ") || "0 min"
+  );
+}
+
+export function initialPaymentCents(total: number, plan: PaymentPlan) {
+  const safeTotal = Number.isSafeInteger(total) ? Math.max(0, total) : 0;
+  return plan === "deposit_30" ? Math.round((safeTotal * 30) / 100) : safeTotal;
+}
+
+/** Divide a group payment across its booking rows without losing centavos. */
+export function splitAmountCents(amount: number, count: number) {
+  const safeAmount = Number.isSafeInteger(amount) ? Math.max(0, amount) : 0;
+  const quantity = Math.max(0, Math.floor(count));
+  if (!quantity) return [];
+  const base = Math.floor(safeAmount / quantity);
+  const remainder = safeAmount % quantity;
+  return Array.from({ length: quantity }, (_, index) => base + (index < remainder ? 1 : 0));
+}
+
+export function verifiedPaymentAmountCents(
+  items: Array<{
+    provider: string | null;
+    providerStatus: string | null;
+    bookingStatus: PaymentStatus;
+    amountCents: number | null;
+  }>,
+) {
+  return items.reduce((sum, item) => {
+    const amount = Number(item.amountCents);
+    if (!Number.isSafeInteger(amount) || amount < 0) return sum;
+    const verified =
+      (item.provider === "infinitepay" && item.providerStatus === "paid") ||
+      (item.provider === "onsite" && item.bookingStatus === "paid");
+    return verified ? sum + amount : sum;
+  }, 0);
 }
 
 /** Junta horários escolhidos em faixas contínuas para leitura do cliente/admin. */

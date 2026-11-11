@@ -732,12 +732,7 @@ nav a.l {
 .shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgb(8 5 3/0.45),
-    rgb(8 5 3/0.1) 38%,
-    rgb(8 5 3/0.82)
-  );
+  background: linear-gradient(180deg, rgb(8 5 3/0.45), rgb(8 5 3/0.1) 38%, rgb(8 5 3/0.82));
 }
 .hero .btn:not(.pri) {
   background: rgb(255 255 255/0.14);
@@ -767,12 +762,7 @@ nav a.l {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(
-    100deg,
-    rgb(8 30 110/0.88),
-    rgb(20 60 200/0.45) 55%,
-    rgb(8 5 3/0.35)
-  );
+  background: linear-gradient(100deg, rgb(8 30 110/0.88), rgb(20 60 200/0.45) 55%, rgb(8 5 3/0.35));
 }
 .sc {
   display: grid;
@@ -1012,6 +1002,143 @@ fieldset.lk {
 .booking-promo-applied {
   color: var(--ac);
   font-weight: 800;
+}
+.booking-payment-dialog {
+  width: min(100% - 2rem, 38rem);
+  max-height: min(88dvh, 46rem);
+  margin: auto;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  overflow: auto;
+  border: 1px solid var(--bd);
+  border-radius: 22px;
+  background: var(--sf);
+  color: var(--tx);
+  box-shadow: 0 24px 90px rgb(0 0 0 / 0.3);
+}
+.booking-payment-dialog[open] {
+  animation: booking-dialog-in 0.24s var(--eo) both;
+}
+.booking-payment-dialog::backdrop {
+  background: rgb(10 12 15 / 0.56);
+  backdrop-filter: blur(4px);
+  animation: booking-backdrop-in 0.24s ease-out both;
+}
+.booking-payment-dialog__top,
+.booking-payment-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.booking-payment-dialog__close {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border: 1px solid var(--bd);
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+.booking-payment-dialog h2 {
+  margin: 1.1rem 0 0.4rem;
+  font: italic 800 clamp(2rem, 1.25rem + 3vw, 3rem)/0.95 var(--fh);
+  text-transform: uppercase;
+}
+.booking-payment-dialog__intro,
+.booking-payment-dialog__note {
+  color: var(--mu);
+  line-height: 1.5;
+}
+.booking-payment-dialog__intro strong {
+  color: var(--tx);
+}
+.booking-payment-choices {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  padding: 0;
+  border: 0;
+}
+.booking-payment-choice {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+}
+.booking-payment-choice:has(input:checked) {
+  border-color: var(--ac);
+  background: color-mix(in srgb, var(--ac) 7%, var(--sf));
+}
+.booking-payment-choice input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--ac);
+}
+.booking-payment-choice span {
+  display: grid;
+  gap: 0.25rem;
+}
+.booking-payment-choice b {
+  color: var(--ac);
+  font: italic 800 1.6rem/1 var(--fh);
+}
+.booking-payment-choice small {
+  color: var(--mu);
+  line-height: 1.4;
+}
+.booking-payment-dialog__actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+.booking-payment-dialog__actions .btn {
+  min-height: 2.9rem;
+}
+@keyframes booking-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.7rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes booking-backdrop-in {
+  from {
+    background-color: rgb(10 12 15 / 0);
+    backdrop-filter: blur(0);
+  }
+  to {
+    background-color: rgb(10 12 15 / 0.56);
+    backdrop-filter: blur(4px);
+  }
+}
+@media (max-width: 34rem) {
+  .booking-payment-dialog__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .booking-payment-dialog__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .booking-payment-dialog[open],
+  .booking-payment-dialog::backdrop {
+    animation: none;
+  }
 }
 .booking-consent-block {
   display: grid;
@@ -1576,11 +1703,7 @@ tr:last-child td {
   color: #1a1210;
 }
 .cell.bloq {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--bd) 0 6px,
-    transparent 6px 12px
-  );
+  background: repeating-linear-gradient(135deg, var(--bd) 0 6px, transparent 6px 12px);
   border-style: solid;
 }
 @media (hover: hover) and (pointer: fine) {

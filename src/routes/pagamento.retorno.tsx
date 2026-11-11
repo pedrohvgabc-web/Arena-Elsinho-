@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-react";
 import { verifyPaymentReturn } from "@/lib/arena.functions";
 import { SITE, waLink } from "@/lib/site";
+import { formatBRL } from "@/lib/arena-rules";
 
 export const Route = createFileRoute("/pagamento/retorno")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -43,6 +44,10 @@ function PaymentReturnPage() {
   const result = query.data;
   const confirmed = result?.status === "paid";
   const review = result?.status === "review";
+  const depositPaid =
+    result?.kind === "booking" &&
+    result.paymentPlan === "deposit_30" &&
+    Number(result.balanceDueCents ?? 0) > 0;
   const waiting =
     canVerify && !query.isError && !confirmed && !review && result?.status !== "not_found";
   const message = `Olá! Voltei do checkout InfinitePay e gostaria de confirmar meu pagamento. Pedido ${search.order_nsu || "sem código"}.`;
@@ -75,11 +80,15 @@ function PaymentReturnPage() {
       </h1>
       <p className="mt-3 leading-relaxed text-muted-foreground">
         {confirmed
-          ? `A InfinitePay confirmou o pagamento${result.kind === "tournament" ? " da inscrição" : " da reserva"}. Guarde o código ${result.code ?? search.order_nsu}.`
+          ? depositPaid
+            ? `A InfinitePay confirmou a entrada de ${formatBRL(Number(result.chargedAmountCents))}. O saldo de ${formatBRL(Number(result.balanceDueCents))} continua pendente. Guarde o código ${result.code ?? search.order_nsu}.`
+            : `A InfinitePay confirmou o pagamento${result.kind === "tournament" ? " da inscrição" : " da reserva"}. Guarde o código ${result.code ?? search.order_nsu}.`
           : review
             ? result.kind === "tournament"
               ? "A InfinitePay confirmou o pagamento, mas a equipe consta como cancelada. Fale com a Arena: o pagamento não reativa automaticamente a inscrição."
-              : "A InfinitePay confirmou o pagamento, mas a reserva precisa de conferência da equipe. Fale com a Arena antes de considerar o horário confirmado."
+              : depositPaid
+                ? `A InfinitePay confirmou a entrada de ${formatBRL(Number(result.chargedAmountCents))}, mas a reserva precisa de revisão. O saldo pendente é ${formatBRL(Number(result.balanceDueCents))}; fale com a Arena.`
+                : "A InfinitePay confirmou o pagamento, mas a reserva precisa de conferência da equipe. Fale com a Arena antes de considerar o horário confirmado."
             : result?.status === "not_found" || !canVerify
               ? "Não foi possível validar os dados de retorno. Entre em contato com a Arena e informe o código do pedido."
               : "Estamos consultando a InfinitePay diretamente. Esta página de retorno, sozinha, não confirma que o pagamento foi aprovado."}

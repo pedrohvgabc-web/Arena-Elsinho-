@@ -75,6 +75,7 @@ export async function createInfinitePayCheckout(input: {
   amountCents: number;
   description: string;
   expiresAt: string;
+  customer?: { name: string; phoneNumber: string };
 }): Promise<InfinitePayCheckout> {
   if (!Number.isSafeInteger(input.amountCents) || input.amountCents < 100) {
     throw new Error("INFINITEPAY_INVALID_AMOUNT");
@@ -84,7 +85,7 @@ export async function createInfinitePayCheckout(input: {
     throw new Error("INFINITEPAY_INVALID_EXPIRATION");
   }
   const { handle } = credentials();
-  const result = await postJson(`${API_BASE}/links`, {
+  const payload: Record<string, unknown> = {
     handle,
     items: [
       {
@@ -103,9 +104,19 @@ export async function createInfinitePayCheckout(input: {
       single_payment: true,
       require_delivery_address: false,
       valid_until: expiresAt.toISOString(),
-      payment_methods_enabled: ["credit_card", "pix"],
+      // InfinitePay documents that credit card is always available; this only enables Pix.
+      payment_methods_enabled: ["pix"],
     },
-  });
+  };
+  const customerName = input.customer?.name.trim().slice(0, 80) ?? "";
+  const phoneDigits = input.customer?.phoneNumber.replace(/\D/g, "") ?? "";
+  if (customerName.length >= 2 && /^(?:55)?[1-9]{2}9?\d{8}$/.test(phoneDigits)) {
+    payload["customer"] = {
+      name: customerName,
+      phone_number: phoneDigits.startsWith("55") ? `+${phoneDigits}` : `+55${phoneDigits}`,
+    };
+  }
+  const result = await postJson(`${API_BASE}/links`, payload);
 
   const rawUrl = result["url"] ?? result["checkout_url"] ?? result["link"];
   if (typeof rawUrl !== "string" || rawUrl.length > 2048) {

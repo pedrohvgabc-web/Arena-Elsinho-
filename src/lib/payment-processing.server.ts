@@ -11,6 +11,8 @@ type BookingCheckoutRow = {
   expires_at: string | null;
   provider_ref: string;
   checkout_url: string | null;
+  customer_name: string;
+  customer_phone: string;
 };
 type TournamentCheckoutRow = {
   id: string;
@@ -24,6 +26,7 @@ type OrderRow = {
   kind: "booking" | "tournament";
   code: string;
   expected_amount_cents: number;
+  total_amount_cents: number;
   status: string;
   requires_review: boolean;
 };
@@ -32,20 +35,24 @@ export type PaymentProcessingResult = {
   status: "paid" | "review" | "processing" | "not_found";
   kind?: "booking" | "tournament";
   code?: string;
+  chargedAmountCents?: number;
+  totalAmountCents?: number;
+  balanceDueCents?: number;
+  paymentPlan?: "full" | "deposit_30";
 };
 
 export async function ensureBookingCheckout(groupCode: string): Promise<string> {
   const db = getDb();
   const rows = (await db`
-    SELECT SUM(b.amount_cents)::int AS amount_cents,
+    SELECT SUM(p.amount_cents)::int AS amount_cents,
       MIN(b.expires_at)::text AS expires_at,
-      p.provider_ref, p.checkout_url
+      MAX(p.provider_ref) AS provider_ref, MAX(p.checkout_url) AS checkout_url,
+      MIN(b.customer_name) AS customer_name, MIN(b.phone) AS customer_phone
     FROM public.bookings b
     INNER JOIN public.payments p ON p.booking_id = b.id
     WHERE b.group_code = ${groupCode}
       AND p.provider = 'infinitepay'
-      AND p.provider_ref IS NOT NULL
-    GROUP BY p.provider_ref, p.checkout_url
+    GROUP BY b.group_code
     LIMIT 1
   `) as unknown as BookingCheckoutRow[];
   const row = rows[0];
@@ -60,6 +67,7 @@ export async function ensureBookingCheckout(groupCode: string): Promise<string> 
     amountCents: Number(row.amount_cents),
     description: `Reserva Arena Leste ${groupCode}`,
     expiresAt: expiry.toISOString(),
+    customer: { name: row.customer_name, phoneNumber: row.customer_phone },
   });
   const saved = await db`
     UPDATE public.payments
@@ -133,14 +141,17 @@ async function getOrder(orderNsu: string): Promise<OrderRow | null> {
   const db = getDb();
   if (orderNsu.startsWith("ALB-")) {
     const rows = (await db`
-      SELECT 'booking'::text AS kind, b.group_code AS code,
-        SUM(b.amount_cents)::int AS expected_amount_cents,
+      SELECT 'booking'::text AS kind, target_b.group_code AS code,
+        COALESCE(SUM(p.amount_cents), 0)::int AS expected_amount_cents,
+        SUM(b.amount_cents)::int AS total_amount_cents,
         MIN(b.payment_status)::text AS status,
         (BOOL_OR(p.status = 'paid') AND COUNT(*) FILTER (WHERE b.payment_status = 'paid') < COUNT(*)) AS requires_review
-      FROM public.payments p
-      INNER JOIN public.bookings b ON b.id = p.booking_id
-      WHERE p.provider = 'infinitepay' AND p.provider_ref = ${orderNsu}
-      GROUP BY b.group_code
+      FROM public.payments target_p
+      INNER JOIN public.bookings target_b ON target_b.id = target_p.booking_id
+      INNER JOIN public.bookings b ON b.group_code = target_b.group_code
+      LEFT JOIN public.payments p ON p.booking_id = b.id AND p.provider = 'infinitepay'
+      WHERE target_p.provider = 'infinitepay' AND target_p.provider_ref = ${orderNsu}
+      GROUP BY target_b.group_code
       LIMIT 1
     `) as unknown as OrderRow[];
     return rows[0] ?? null;
@@ -148,7 +159,8 @@ async function getOrder(orderNsu: string): Promise<OrderRow | null> {
   if (orderNsu.startsWith("ALT-")) {
     const rows = (await db`
       SELECT 'tournament'::text AS kind, registration_code AS code,
-        payment_amount_cents AS expected_amount_cents, payment_status AS status,
+        payment_amount_cents AS expected_amount_cents,
+        payment_amount_cents AS total_amount_cents, payment_status AS status,
         (status = 'cancelled' AND payment_status = 'paid') AS requires_review
       FROM public.tournament_registrations
       WHERE payment_provider = 'infinitepay' AND payment_order_nsu = ${orderNsu}
@@ -165,11 +177,21 @@ export async function processInfinitePayPayment(
 ): Promise<PaymentProcessingResult> {
   const order = await getOrder(notice.orderNsu);
   if (!order) return { status: "not_found" };
+  const chargedAmountCents = Number(order.expected_amount_cents);
+  const totalAmountCents = Number(order.total_amount_cents);
+  const balanceDueCents = Math.max(0, totalAmountCents - chargedAmountCents);
+  const details = {
+    kind: order.kind,
+    code: order.code,
+    chargedAmountCents,
+    totalAmountCents,
+    balanceDueCents,
+    paymentPlan: balanceDueCents > 0 ? ("deposit_30" as const) : ("full" as const),
+  };
   if (order.status === "paid") {
     return {
       status: order.requires_review ? "review" : "paid",
-      kind: order.kind,
-      code: order.code,
+      ...details,
     };
   }
 
@@ -179,7 +201,7 @@ export async function processInfinitePayPayment(
     slug: notice.slug,
     expectedAmountCents: Number(order.expected_amount_cents),
   });
-  if (!verification.valid) return { status: "processing", kind: order.kind, code: order.code };
+  if (!verification.valid) return { status: "processing", ...details };
 
   const db = getDb();
   const now = new Date().toISOString();
@@ -289,7 +311,7 @@ export async function processInfinitePayPayment(
       : ("review" as const);
   });
 
-  return { status: result, kind: order.kind, code: order.code };
+  return { status: result, ...details };
 }
 
 export async function knownInfinitePayWebhookEvent(eventId: string): Promise<boolean> {

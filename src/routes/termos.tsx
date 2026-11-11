@@ -13,9 +13,14 @@ export const Route = createFileRoute("/termos")({
       <h2>Agendamento das unidades</h2>
       <p>
         O site registra pedidos de reserva por unidade, quadra, data e horário. Quando o checkout
-        InfinitePay estiver ativado, a reserva fica pendente enquanto o pagamento é processado e só
-        muda para paga após confirmação servidor a servidor. A página de retorno do checkout, por si
-        só, não comprova o pagamento. Pagamento no local fica sujeito à confirmação da equipe.
+        InfinitePay estiver ativado, a reserva fica pendente enquanto a cobrança é processada e só é
+        confirmada após validação servidor a servidor. A página de retorno do checkout, por si só,
+        não comprova o pagamento. Antes do checkout online, o responsável pode optar por pagar uma
+        entrada de 30% ou o valor integral. Após a validação da cobrança, a reserva só é confirmada
+        se os horários ainda estiverem disponíveis; em caso de conflito ou expiração, o pagamento
+        recebido exige revisão da equipe. A entrada não quita o total: o saldo restante continua
+        pendente e deve ser pago conforme orientação da Arena. Pagamento no local fica sujeito à
+        confirmação da equipe.
       </p>
       <h2>Pré-inscrição no torneio</h2>
       <p>

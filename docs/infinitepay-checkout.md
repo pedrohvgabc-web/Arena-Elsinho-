@@ -1,36 +1,36 @@
-# InfinitePay Checkout — notas de integração
+# InfinitePay Checkout — Arena Leste
 
-## Contrato oficial consultado
+## Contrato do provedor
 
-- Criar um checkout: `POST https://api.checkout.infinitepay.io/links`.
-- O valor de `items[].price` é informado em centavos.
-- A API Key fica somente no servidor, no header `X-Api-Key`. Com chave, a InfiniteTag não precisa acompanhar a criação do link; a consulta de status usa `handle`, que precisa pertencer à mesma conta da chave.
-- Pix e cartão: a opção por link fica em `options.payment_methods_enabled: ["credit_card", "pix"]`; a InfinitePay informa que cartão está sempre disponível.
-- Cobrança única: `options.single_payment: true`. Validade: `options.valid_until` em ISO 8601, no futuro e até um ano.
-- Retorno: `redirect_url` recebe `order_nsu`, `slug`, `capture_method`, `transaction_nsu` e `receipt_url`. A documentação informa que o comprador toca em “Continuar” no checkout/comprovante para voltar ao site.
-- Webhook: a forma oficial documentada é `webhook: { url, events }`. O webhook não tem assinatura; verificar cada aviso no servidor com `POST https://api.checkout.infinitepay.io/payment_check` e a API Key. O webhook deve ser tratado como aviso, não como prova de pagamento.
-- A resposta de `payment_check` inclui `success`, `paid`, `amount`, `paid_amount`, `installments` e `capture_method`. Não se deve exigir que `amount` e `paid_amount` sejam iguais, pois o segundo pode incluir taxas repassadas.
-- A API não oferece sandbox: o botão de teste cria um link real; a central de ajuda informa valor mínimo de R$ 1,00. Portanto, o código não deve fazer compras de teste automaticamente.
-- A central de ajuda alerta que não há consulta de link pelo `order_nsu`; reenvio da mesma requisição pode retornar o mesmo link. A URL recebida deve ser persistida imediatamente e não deve ser gravada em logs públicos.
+A API usa `POST https://api.checkout.infinitepay.io/links` com a chave somente no header `X-Api-Key`; valores de itens são enviados em centavos. A resposta fornece `checkout_url`. A criação inclui `redirect_url` e `webhook: { url, events: ["paid"] }`. Webhooks são avisos, não prova de pagamento: o servidor consulta `POST https://api.checkout.infinitepay.io/payment_check` e confere `success`, `paid`, o pedido, o identificador da transação, a forma reconhecida e o valor exato.
 
-## Aplicação neste projeto
+A InfinitePay não oferece sandbox de cobrança. O botão de teste cria um checkout real; não executar pagamento de teste sem autorização expressa do titular da conta. Os links são persistidos no servidor e não devem ser gravados em logs públicos.
 
-O backend cria um link por reserva agrupada e um por pré-inscrição do torneio, com NSUs prefixados diferentes. O preço vem do banco e das regras do servidor: R$ 60/hora no preço-base atual e R$ 50/hora na promoção para duas ou mais horas elegíveis. O site só redireciona para o checkout hospedado; não exibe nem inventa um payload Pix bancário.
+### Cartão e Pix
 
-O checkout real permanece desligado por padrão. Ele só poderá ser ativado no serviço backend do Render quando a nova chave e a InfiniteTag correta estiverem configuradas como variáveis de ambiente. A chave anterior foi compartilhada em conversa e não deve ser reutilizada. Nenhuma chave deve entrar no repositório, no bundle do navegador, em `render.yaml` ou em arquivo `.env` versionado.
+A integração pede `options.payment_methods_enabled: ["pix"]` para habilitar Pix. A documentação oficial informa que o cartão de crédito permanece sempre disponível e que essa opção não consegue desligá-lo. Portanto, este checkout InfinitePay **não pode ser anunciado nem tratado como Pix-only**. Para impedir cartão de fato, é preciso trocar para um provedor que ofereça essa configuração ou aceitar que o cartão apareça.
 
-## Fontes oficiais
+### Dados no checkout
 
-1. InfinitePay — [Documentação do Checkout Integrado](https://www.infinitepay.io/checkout-documentacao), consultada em 2026-11-11.
-2. InfinitePay — [Como usar o Checkout Integrado](https://ajuda.infinitepay.io/pt-BR/articles/10766888-como-usar-o-checkout-integrado), consultada em 2026-11-11.
+Para reduzir digitação na reserva, a aplicação pode enviar `customer.name` e `customer.phone_number` com nome e WhatsApp já informados. Não envia CPF, endereço, observações ou dados de cartão. A InfinitePay ainda pode exigir confirmação de contato/código; o checkout hospedado não permite remover essa etapa por esta API. A opção de endereço de entrega fica desativada (`require_delivery_address: false`).
 
-## Implementação no repositório
+## Regras da Arena
 
-- Configuração: `INFINITEPAY_ENABLED` (precisa ser `true` para iniciar o modo real), `INFINITEPAY_API_KEY` (somente secret do servidor) e `INFINITEPAY_HANDLE` (para esta conta: `pedro-henrique-veira`, sem `$`). A aplicação retorna `demo` se a integração estiver desligada e `unavailable` se estiver ligada com configuração incompleta.
-- Callback do webhook: `https://arena-leste.onrender.com/api/public/payments/webhook`. Callback de retorno: `https://arena-leste.onrender.com/pagamento/retorno`. Recomenda-se habilitar o redirecionamento após o pagamento para mostrar o resultado ao cliente; a confirmação, porém, depende sempre do webhook ou da consulta `payment_check`, não do redirect.
-- Migração: `drizzle/migrations/0007_infinitepay_checkout.sql`. Reservas com pagamento online seguram a disponibilidade por 30 minutos; links do torneio expiram em 24 horas. Um pagamento de reserva múltipla é uma única cobrança calculada integralmente no servidor.
-- Checkout: o payload oferece Pix e cartão em pagamento único e desativa endereço de entrega (`require_delivery_address: false`). CPF/endereço locais não são incluídos no pedido enviado à InfinitePay.
-- Webhook repetido: o identificador `order_nsu + transaction_nsu` é usado para idempotência. Dados pessoais, API Key e corpo integral do webhook não são gravados nos logs de auditoria.
-- Revisão tardia: se o pagamento entrar depois da expiração/cancelamento, ele é registrado como recebido, mas a reserva/equipe não é confirmada automaticamente. O admin pode reativar uma reserva apenas se o horário ainda não terminou, não houver conflito e o pagamento continuar sem estorno; equipe cancelada permanece cancelada. Em caso de conflito/cancelamento, contato e eventual estorno são manuais no painel InfinitePay.
-- Antes de ativar: aplicar a migração ao banco, publicar o código com a integração ainda desligada, cadastrar os três valores na seção **Environment** do serviço Web Service da Render e conferir a URL do webhook e que **Redirecionar após pagamento** está ligado no painel InfinitePay. Só então definir `INFINITEPAY_ENABLED=true` e salvar/deployar.
-- Não há sandbox de cobrança. Não clicar em checkout real para testar sem aprovação expressa e sem combinar previamente a cobrança com o titular da conta InfinitePay.
+- O servidor calcula o total pela duração real: tarifa normal de R$ 60 por hora; quando a duração total ultrapassa 60 minutos, R$ 50 por hora para todo o período. Dois blocos de 30 minutos somam uma hora e não recebem a promoção. Exemplo: quatro horas = R$ 200.
+- A reserva permite até 16 horas por pedido; o número de blocos varia com a duração configurada na quadra (até 32 blocos de 30 minutos), sempre limitado à disponibilidade efetiva.
+- Antes do checkout, o responsável escolhe cobrar 30% do total ou 100%. O valor é arredondado em centavos e calculado no servidor. Após a validação do pagamento, a reserva só é confirmada se os horários continuam disponíveis; a entrada não quita o total, e o saldo continua pendente e visível para cliente/admin, sem ser incluído no primeiro checkout.
+- Uma cobrança InfinitePay cobre o grupo de horários. O valor esperado por `payment_check` é a soma das parcelas técnicas gravadas em `payments`, não somente a primeira linha que contém o `provider_ref`.
+- Reservas online ficam pendentes por 30 minutos. Após confirmação server-to-server, a reserva é mantida como ocupada; pagamentos tardios/conflitantes exigem revisão administrativa. Cancelar não processa estorno.
+
+## Configuração e rotas
+
+- Variáveis exclusivamente no serviço Web Service da Render: `INFINITEPAY_ENABLED=true`, `INFINITEPAY_API_KEY` (secret) e `INFINITEPAY_HANDLE=pedro-henrique-veira` (sem `$`). Não enviar a chave por chat nem incluí-la em `.env` versionado, `render.yaml`, logs ou bundle público.
+- Webhook: `https://arena-leste.onrender.com/api/public/payments/webhook`.
+- Retorno: `https://arena-leste.onrender.com/pagamento/retorno`.
+- O redirect apenas mostra o estado consultado pelo servidor; não confirma uma cobrança por si só. O webhook também executa `payment_check` e é idempotente.
+- O schema da integração inicial está em `drizzle/migrations/0007_infinitepay_checkout.sql`. O rateio da entrada usa os campos monetários existentes e não exige nova coluna para distinguir total contratado de valor cobrado.
+
+## Fontes oficiais consultadas
+
+1. InfinitePay — [Documentação do Checkout Integrado](https://www.infinitepay.io/checkout-documentacao), consultada em 2026-11-11: configuração de meios disponíveis, prefill de comprador, `payment_check`, retorno e webhooks.
+2. InfinitePay — [Como usar o Checkout Integrado](https://ajuda.infinitepay.io/pt-BR/articles/10766888-como-usar-o-checkout-integrado), consultada em 2026-11-11: operação do checkout e ausência de sandbox para cobrança real.

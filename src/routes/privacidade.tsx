@@ -53,8 +53,10 @@ function Page() {
       <p>
         Quando o checkout real estiver ativado, o site abre uma página hospedada pela InfinitePay
         para pagamento por Pix ou cartão. Para gerar o link, compartilhamos com esse provedor o
-        valor, uma descrição do serviço e um código técnico do pedido; não enviamos CPF nem
-        endereço. Os dados do cartão são informados diretamente no ambiente da InfinitePay. O
+        valor, uma descrição do serviço e um código técnico do pedido. No checkout de reserva,
+        também enviamos nome e WhatsApp para pré-preencher esses campos, quando o usuário escolhe
+        pagamento pela InfinitePay; não enviamos CPF nem endereço. Os dados do cartão são informados
+        diretamente no ambiente da InfinitePay, que pode solicitar confirmação de contato. O
         servidor recebe identificadores da transação e consulta a InfinitePay para validar o
         pagamento.
       </p>

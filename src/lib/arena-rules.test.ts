@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateBookingPrice,
+  formatDuration,
+  initialPaymentCents,
+  splitAmountCents,
+  verifiedPaymentAmountCents,
   validateSlot,
   slotsFor,
   normalizePhone,
@@ -99,12 +103,81 @@ describe("preço promocional de reservas múltiplas", () => {
     });
   });
 
+  it("não dá desconto a dois slots de 30 min que somam exatamente uma hora", () => {
+    expect(calculateBookingPrice(3_000, 30, 2)).toEqual({
+      perSlotCents: 3_000,
+      totalCents: 6_000,
+      promoApplied: false,
+    });
+  });
+
+  it("aplica R$50/h depois de passar uma hora, mesmo em um único slot de 90 min", () => {
+    expect(calculateBookingPrice(9_000, 90, 1)).toEqual({
+      perSlotCents: 7_500,
+      totalCents: 7_500,
+      promoApplied: true,
+    });
+    expect(calculateBookingPrice(3_000, 30, 3)).toEqual({
+      perSlotCents: 2_500,
+      totalCents: 7_500,
+      promoApplied: true,
+    });
+  });
+
   it("não eleva uma tarifa configurada abaixo de R$50/h", () => {
     expect(calculateBookingPrice(4_000, 60, 2)).toEqual({
       perSlotCents: 4_000,
       totalCents: 8_000,
       promoApplied: false,
     });
+  });
+  it("totaliza quatro horas em R$200 e permite a jornada de 16 horas", () => {
+    expect(calculateBookingPrice(6_000, 60, 4)).toEqual({
+      perSlotCents: 5_000,
+      totalCents: 20_000,
+      promoApplied: true,
+    });
+    expect(calculateBookingPrice(6_000, 60, 16).totalCents).toBe(80_000);
+  });
+  it("calcula 30% em centavos e distribui o total sem perder centavos", () => {
+    expect(initialPaymentCents(20_000, "deposit_30")).toBe(6_000);
+    expect(initialPaymentCents(20_001, "deposit_30")).toBe(6_000);
+    expect(initialPaymentCents(20_000, "full")).toBe(20_000);
+    expect(splitAmountCents(6_001, 4)).toEqual([1_501, 1_500, 1_500, 1_500]);
+    expect(splitAmountCents(20_000, 4).reduce((sum, value) => sum + value, 0)).toBe(20_000);
+  });
+
+  it("formata duração real e só soma recebimentos verificados", () => {
+    expect(formatDuration(60)).toBe("1 h");
+    expect(formatDuration(90)).toBe("1 h 30 min");
+    expect(
+      verifiedPaymentAmountCents([
+        {
+          provider: "infinitepay",
+          providerStatus: "paid",
+          bookingStatus: "expired",
+          amountCents: 6_000,
+        },
+        {
+          provider: "infinitepay",
+          providerStatus: "pending",
+          bookingStatus: "paid",
+          amountCents: 6_000,
+        },
+        {
+          provider: "onsite",
+          providerStatus: "pending",
+          bookingStatus: "paid",
+          amountCents: 2_000,
+        },
+        {
+          provider: "demo",
+          providerStatus: "paid",
+          bookingStatus: "paid",
+          amountCents: 9_000,
+        },
+      ]),
+    ).toBe(8_000);
   });
 });
 

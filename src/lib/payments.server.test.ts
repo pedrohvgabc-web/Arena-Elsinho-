@@ -34,7 +34,7 @@ describe("InfinitePay server checkout", () => {
     expect(getPaymentMode()).toBe("demo");
   });
 
-  it("cria um link de pagamento em centavos com Pix e cartão, sem enviar CPF/endereço", async () => {
+  it("cria um link com Pix habilitado e pré-preenche nome/telefone sem enviar CPF/endereço", async () => {
     configureTestCheckout();
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
@@ -50,6 +50,7 @@ describe("InfinitePay server checkout", () => {
       amountCents: 10_000,
       description: "Reserva Arena Leste AL-TESTE12",
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      customer: { name: "João da Silva", phoneNumber: "69999991234" },
     });
 
     expect(checkout.checkoutUrl).toBe("https://checkout.infinitepay.io/pay/example");
@@ -64,9 +65,11 @@ describe("InfinitePay server checkout", () => {
     expect(payload["options"]).toMatchObject({
       single_payment: true,
       require_delivery_address: false,
-      payment_methods_enabled: ["credit_card", "pix"],
+      payment_methods_enabled: ["pix"],
     });
-    expect(payload).not.toHaveProperty("customer");
+    expect(payload["customer"]).toEqual({ name: "João da Silva", phone_number: "+5569999991234" });
+    expect(payload["customer"]).not.toHaveProperty("cpf");
+    expect(payload["customer"]).not.toHaveProperty("address");
     expect(payload).not.toHaveProperty("address");
   });
 

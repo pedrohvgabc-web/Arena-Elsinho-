@@ -38,13 +38,21 @@
 
 ## Reserva: promoção, dados e alinhamento do hero
 
-- [x] **Aplicar a promoção de horários múltiplos** — exibir o benefício e calcular no servidor R$ 50/h em reservas com dois ou mais horários, sem alterar o preço normal de R$ 60/h.
+- [x] **Aplicar a promoção por duração real** — exibir o benefício e calcular no servidor R$ 50/h quando a duração total reservada ultrapassar 60 minutos; dois blocos de 30 minutos somam exatamente uma hora e não recebem o desconto; usar tarifa normal de R$ 60/h, salvo valor administrativo diferente.
 - [x] **Centralizar a bola/CTA do hero no cursor** — fazer o centro visual acompanhar o ponteiro, respeitando contêiner, telas móveis e movimento reduzido.
 - [x] **Exigir endereço, CPF e confirmação de uso** — validar os dados no servidor, exigir consentimento e registrar a confirmação junto à reserva.
 - [x] **Atualizar a Política de Privacidade** — descrever coleta de CPF/endereço, proteger os campos das respostas públicas/WhatsApp e explicar que não são enviados ao checkout.
 - [x] **Implementar checkout InfinitePay para reservas e torneio** — links únicos Pix/cartão criados no servidor; montante em centavos derivado das regras server-side; retorno e webhook consultam `payment_check`, conferem valor exato, deduplicam eventos e atualizam status; pagamentos tardios ficam em revisão e não reativam automaticamente reserva/equipe cancelada. Nenhuma cobrança de teste foi feita.
 - [x] **Proteger a API Key** — a aplicação lê o segredo exclusivamente de `INFINITEPAY_API_KEY` no servidor; `.env` está ignorado pelo Git; o modo real exige `INFINITEPAY_ENABLED=true` e chave/tag válidas.
-- [ ] **Ativar InfinitePay em produção** — aplicar `0007_infinitepay_checkout.sql`, publicar o código ainda desligado, cadastrar uma nova API Key rotacionada e `INFINITEPAY_HANDLE=pedro-henrique-veira` nos segredos da Render, validar webhook/redirect e só então ligar `INFINITEPAY_ENABLED=true`; não compartilhar a chave no chat nem usar cobrança real de teste sem autorização.
+- [x] **Ativar InfinitePay em produção** — migração 0007 aplicada, segredo e InfiniteTag configurados no backend Render, modo público `infinitepay` e deploy ativo; nenhuma cobrança de teste foi feita.
+
+## Atualização: valor por hora e entrada da reserva
+
+- [x] **Calcular preço pela duração selecionada** — cobrar R$ 60,00 por 60 minutos na tarifa normal; quando o total reservado ultrapassar 60 minutos, aplicar R$ 50,00 por hora a todo o período (por exemplo, 4 horas = R$ 200,00); somar durações reais, não a quantidade de blocos; aceitar até 16 horas por pedido, incluindo até 32 blocos de 30 minutos, quando a grade do dia permitir; recalcular total no navegador e no servidor.
+- [x] **Escolher entrada ou valor integral antes do checkout** — depois de preencher os dados da reserva e avançar, mostrar uma caixa modal acessível sobre o fundo com blur leve e fade-in; oferecer pagamento inicial de 30% do total ou pagamento integral; arredondar a entrada para centavos e cobrar somente a opção escolhida na InfinitePay; mostrar o saldo restante sem marcar a reserva como totalmente quitada.
+- [x] **Registrar recebimento e saldo corretamente** — validar `payment_check` pelo valor efetivamente cobrado, confirmar a reserva após pagamento, manter o total contratado separado do valor recebido e exibir entrada/saldo no retorno e no admin.
+- [x] **Reduzir repetição de cadastro no checkout** — pré-preencher nome e WhatsApp já informados na reserva quando suportado; nunca enviar CPF/endereço à InfinitePay; manter a Política de Privacidade precisa quanto aos dados compartilhados.
+- [ ] **Desativar cartão no checkout InfinitePay** — requisito solicitado, mas bloqueado pela documentação oficial: o cartão de crédito permanece sempre disponível; decidir entre manter o checkout InfinitePay com cartão disponível ou trocar para um provedor que permita Pix-only antes de marcar como atendido.
 
 ## Correções operacionais desta solicitação
 
