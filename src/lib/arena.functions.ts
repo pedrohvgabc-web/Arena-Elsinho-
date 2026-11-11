@@ -885,6 +885,69 @@ export const adminUpdateArenaSpace = createServerFn({ method: "POST" })
     return result;
   });
 
+const createArenaSpaceSchema = z.object({
+  unitId: z.enum(["unidade-1", "unidade-2"]),
+});
+
+export const adminCreateArenaSpace = createServerFn({ method: "POST" })
+  .inputValidator(createArenaSpaceSchema)
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const db = await database();
+    const result = await db.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`arena-space:${data.unitId}`})::bigint)`;
+      const countRows = (await tx`
+        SELECT COUNT(*) AS count FROM public.arena_spaces WHERE unit_id = ${data.unitId}
+      `) as unknown as Array<{ count: number | string }>;
+      if (Number(countRows[0]?.count ?? 0) >= 12) {
+        return { ok: false as const, error: "Cada unidade pode ter no máximo 12 quadras." };
+      }
+
+      const baseOrder = data.unitId === "unidade-1" ? 100 : 200;
+      const orderRows = (await tx`
+        SELECT COALESCE(MAX(sort_order), ${baseOrder}) AS max_order
+        FROM public.arena_spaces WHERE unit_id = ${data.unitId}
+      `) as unknown as Array<{ max_order: number | string }>;
+      const sortOrder = Math.max(baseOrder, Number(orderRows[0]?.max_order ?? baseOrder)) + 1;
+      const name = `Quadra ${sortOrder - baseOrder}`;
+      const id = `q-${crypto.randomUUID()}`;
+
+      await tx`
+        INSERT INTO public.arena_spaces (
+          id, unit_id, name, sport, capacity, slot_minutes, price_cents, active, sort_order
+        ) VALUES (
+          ${id}, ${data.unitId}, ${name}, 'Vôlei de praia', NULL, 60, NULL, false, ${sortOrder}
+        )
+      `;
+      return {
+        ok: true as const,
+        space: {
+          id,
+          unitId: data.unitId,
+          name,
+          sport: "Vôlei de praia",
+          slotMinutes: 60,
+          priceCents: null,
+          active: false,
+          sortOrder,
+        },
+      };
+    });
+
+    if (!result.ok) return result;
+    spacesCache = undefined;
+    try {
+      await audit("admin", "arena.space.create", "arena_space", result.space.id, {
+        unitId: result.space.unitId,
+        name: result.space.name,
+        sortOrder: result.space.sortOrder,
+      });
+    } catch (error) {
+      console.error("arena space create audit failed", errorCode(error) ?? "unknown");
+    }
+    return result;
+  });
+
 const weeklyHoursSchema = z
   .object({
     unitId: z.enum(["unidade-1", "unidade-2"]),
@@ -1345,8 +1408,11 @@ export const adminDashboardSummary = createServerFn({ method: "GET" }).handler(a
       WHERE s.unit_id IN ('unidade-1', 'unidade-2')
     `,
     db`
-      SELECT COUNT(*) AS count FROM public.arena_spaces
-      WHERE unit_id IN ('unidade-1', 'unidade-2') AND active = true AND price_cents > 0
+      SELECT
+        COUNT(*) FILTER (WHERE active = true AND price_cents > 0) AS active_count,
+        COUNT(*) AS total_count
+      FROM public.arena_spaces
+      WHERE unit_id IN ('unidade-1', 'unidade-2')
     `,
     db`SELECT COUNT(*) AS count FROM public.tournament_registrations WHERE status = 'pending'`,
     db`
@@ -1375,7 +1441,12 @@ export const adminDashboardSummary = createServerFn({ method: "GET" }).handler(a
     date,
     todayBookings: Number(stats?.today_bookings ?? 0),
     todayPending: Number(stats?.today_pending ?? 0),
-    activeCourts: Number((courtRows[0] as { count: number | string } | undefined)?.count ?? 0),
+    activeCourts: Number(
+      (courtRows[0] as { active_count: number | string } | undefined)?.active_count ?? 0,
+    ),
+    totalCourts: Number(
+      (courtRows[0] as { total_count: number | string } | undefined)?.total_count ?? 0,
+    ),
     tournamentPending: Number(
       (tournamentRows[0] as { count: number | string } | undefined)?.count ?? 0,
     ),

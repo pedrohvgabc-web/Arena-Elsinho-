@@ -11,12 +11,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Duas unidades e oito quadras de areia em Porto Velho. Escolha onde jogar e faça seu agendamento online.",
+          "Duas unidades com quadras de areia em Porto Velho. Escolha onde jogar e faça seu agendamento online.",
       },
       { property: "og:title", content: "Arena Leste Multi Sports — Vôlei de praia em Porto Velho" },
       {
         property: "og:description",
-        content: "Duas unidades, oito quadras de areia e torneio Novembro Azul em Porto Velho/RO.",
+        content: "Duas unidades com quadras de areia e torneio Novembro Azul em Porto Velho/RO.",
       },
       { property: "og:image", content: SITE.socialImage },
       { property: "og:image:alt", content: "Arena Leste Multi Sports em Porto Velho" },

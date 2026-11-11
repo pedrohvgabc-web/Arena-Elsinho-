@@ -25,9 +25,10 @@
 
 ## Horários, feriados e pedido especial
 
-- [x] **Configurar a grade semanal das duas unidades** — segunda a sexta, 19h até 00h (o último horário pode terminar à meia-noite); sábados e domingos, 08h às 23h.
+- [x] **Ajustar a grade semanal das duas unidades** — segunda a sexta, 19h até 00h; sábado e domingo, 08h até 00h (o fechamento pode terminar à meia-noite).
 - [x] **Reconhecer feriados aplicáveis em Porto Velho/RO** — identificar feriados nacionais, o feriado estadual de Rondônia e os feriados municipais de Porto Velho; distingui-los dos pontos facultativos; permitir que o admin defina uma grade especial ou marque a unidade fechada numa data; fazer a disponibilidade pública e a validação no servidor respeitarem a exceção.
 - [x] **Oferecer negociação de horário diferenciado na landing page** — abaixo da seleção de unidade, exibir “Quero fazer reserva de um horário diferenciado!” e abrir o WhatsApp oficial com essa mensagem pronta.
+- [x] **Permitir adicionar quadras no admin** — o admin pode criar quadras adicionais na unidade selecionada, até 12 por unidade; a nova quadra começa inativa e sem preço até ser configurada, e só passa a aparecer na reserva pública após receber um preço válido e ser ativada.
 
 ## Dados comerciais que continuam pendentes
 

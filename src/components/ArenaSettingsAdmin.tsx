@@ -8,6 +8,7 @@ import { ArenaHolidayHoursAdmin } from "@/components/ArenaHolidayHoursAdmin";
 import {
   adminArenaSettings,
   adminCopyArenaHours,
+  adminCreateArenaSpace,
   adminUpdateArenaHours,
   adminUpdateArenaSpace,
 } from "@/lib/arena.functions";
@@ -64,6 +65,7 @@ export function ArenaSettingsAdmin({
 }) {
   const fetchSettings = useServerFn(adminArenaSettings);
   const copyHours = useServerFn(adminCopyArenaHours);
+  const createSpace = useServerFn(adminCreateArenaSpace);
   const saveSpace = useServerFn(adminUpdateArenaSpace);
   const saveHours = useServerFn(adminUpdateArenaHours);
   const queryClient = useQueryClient();
@@ -72,6 +74,7 @@ export function ArenaSettingsAdmin({
   const [spaceDrafts, setSpaceDrafts] = useState<Record<string, SpaceDraft>>({});
   const [hoursDraft, setHoursDraft] = useState<DraftHours>({ "unidade-1": {}, "unidade-2": {} });
   const [savingSpaceId, setSavingSpaceId] = useState<string | null>(null);
+  const [creatingSpace, setCreatingSpace] = useState(false);
   const [savingDay, setSavingDay] = useState<string | null>(null);
   const [copyingHours, setCopyingHours] = useState(false);
 
@@ -139,6 +142,26 @@ export function ArenaSettingsAdmin({
       toast.error("Não foi possível salvar a quadra.");
     } finally {
       setSavingSpaceId(null);
+    }
+  }
+
+  async function addSpaceToUnit() {
+    setCreatingSpace(true);
+    try {
+      const result = await createSpace({ data: { unitId: selectedUnit } });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${result.space.name} adicionada. Configure o preço antes de ativá-la.`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-arena-settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-dashboard-summary"] }),
+      ]);
+    } catch {
+      toast.error("Não foi possível adicionar a quadra. Confira a conexão e tente novamente.");
+    } finally {
+      setCreatingSpace(false);
     }
   }
 
@@ -218,6 +241,7 @@ export function ArenaSettingsAdmin({
   }
 
   const spaces = (query.data?.spaces ?? []) as Space[];
+  const selectedSpaces = spaces.filter((space) => space.unitId === selectedUnit);
   const unitName = SITE.units.find((unit) => unit.id === selectedUnit)?.name ?? "Unidade";
 
   return (
@@ -302,6 +326,29 @@ export function ArenaSettingsAdmin({
           <p className="mb-4 text-sm text-muted-foreground">
             {unitName} · vôlei de praia · preço por horário
           </p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-background p-4">
+            <div>
+              <p className="text-sm font-semibold">
+                {selectedSpaces.length} de 12 quadras cadastradas
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Uma nova quadra começa inativa e sem preço; configure-a antes de liberar reservas.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={creatingSpace || selectedSpaces.length >= 12}
+              onClick={() => void addSpaceToUnit()}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {creatingSpace ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Adicionar quadra
+            </button>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             {spaces
               .filter((space) => space.unitId === selectedUnit)
@@ -439,7 +486,7 @@ export function ArenaSettingsAdmin({
               const windows = hoursDraft[selectedUnit][weekday] ?? [];
               const suggestedWindow = windows.length
                 ? suggestOpeningWindow(windows)
-                : { start: "17:00", end: "23:00" };
+                : { start: weekday === 0 || weekday === 6 ? "08:00" : "19:00", end: "24:00" };
               const saving = savingDay === `${selectedUnit}:${weekday}`;
               return (
                 <article

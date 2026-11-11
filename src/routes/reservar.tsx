@@ -93,7 +93,7 @@ export const Route = createFileRoute("/reservar")({
       { property: "og:title", content: "Agende sua quadra — Arena Leste" },
       {
         property: "og:description",
-        content: "Agendamento online para as oito quadras de areia das duas unidades.",
+        content: "Agendamento online para as quadras de areia das duas unidades.",
       },
       { property: "og:type", content: "website" },
       { property: "og:site_name", content: SITE.name },

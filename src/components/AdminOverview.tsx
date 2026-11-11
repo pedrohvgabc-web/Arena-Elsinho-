@@ -10,6 +10,7 @@ type Summary = {
   todayBookings: number;
   todayPending: number;
   activeCourts: number;
+  totalCourts: number;
   tournamentPending: number;
   upcoming: Array<{
     booking_date: string;
@@ -62,8 +63,8 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
           )}
         </div>
         <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-          Reservas das oito quadras atuais e pré-inscrições do torneio. O histórico antigo permanece
-          separado.
+          Reservas das quadras cadastradas nas duas unidades e pré-inscrições do torneio. O
+          histórico antigo permanece separado.
         </p>
       </div>
 
@@ -85,7 +86,11 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
             {[
               { label: "Reservas hoje", value: String(data.todayBookings), icon: CalendarDays },
               { label: "Aguardando confirmação", value: String(data.todayPending), icon: Clock3 },
-              { label: "Quadras liberadas", value: `${data.activeCourts} / 8`, icon: ArrowRight },
+              {
+                label: "Quadras liberadas",
+                value: `${data.activeCourts} / ${data.totalCourts}`,
+                icon: ArrowRight,
+              },
               {
                 label: "Inscrições pendentes",
                 value: String(data.tournamentPending),
