@@ -20,8 +20,32 @@ services:
       - path: /*
         name: Permissions-Policy
         value: 'camera=(), microphone=(), geolocation=(self "https://www.google.com" "https://maps.google.com")'
-      # Revalidar respostas para não reapresentar copy antiga após uma publicação.
-      - path: /*
+      # Revalidar somente as entradas HTML; os assets com hash continuam aptos ao cache do CDN.
+      - path: /
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /admin*
+        name: Cache-Control
+        value: no-cache
+      - path: /cancelamento*
+        name: Cache-Control
+        value: no-cache
+      - path: /pagamento/*
+        name: Cache-Control
+        value: no-cache
+      - path: /privacidade*
+        name: Cache-Control
+        value: no-cache
+      - path: /reservar*
+        name: Cache-Control
+        value: no-cache
+      - path: /termos*
+        name: Cache-Control
+        value: no-cache
+      - path: /torneio*
         name: Cache-Control
         value: no-cache
     routes:
