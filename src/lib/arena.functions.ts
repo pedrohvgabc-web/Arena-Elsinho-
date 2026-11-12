@@ -234,7 +234,7 @@ export const getPublicBookingDates = createServerFn({ method: "GET" })
         FROM public.arena_date_overrides
         WHERE unit_id = ${data.unitId}
           AND booking_date >= ${today}::date
-          AND booking_date < (${today}::date + ${BOOKING_HORIZON_DAYS + 1})
+          AND booking_date < (${today}::date + ${BOOKING_HORIZON_DAYS + 1}::integer)
       `,
     ]);
     const weekly = new Map(
