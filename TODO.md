@@ -74,7 +74,8 @@
 - [x] **Ampliar a agenda pública** — permitir escolher dias abertos desde hoje até 180 dias à frente, com navegação mensal em calendário compacto; respeitar os horários semanais e exceções/feriados configurados no admin, carregar as datas e horários sem erro do PostgreSQL (`date + unknown`) e manter a validação final no servidor, inclusive em chamadas diretas ao backend.
 - [x] **Acelerar a escolha de quadras** — pré-carregar as quadras no carregamento inicial da rota e reutilizar a resposta cacheada na consulta cliente, evitando esperar por uma busca adicional após abrir a reserva.
 - [x] **Flutuar e simplificar a promoção** — manter uma bolinha flutuante na área de reserva com somente “Aperte para liberar sua PROMOÇÃO”; ao abrir, exibir uma mensagem curta e comercial com o valor correto, animação responsiva e fechamento por OK/Escape, respeitando movimento reduzido e sem encobrir os controles.
-- [x] **Informar a regra de cancelamento antes de concluir** — depois do preenchimento, exibir que cancelamentos só podem ser solicitados até 15 horas antes do primeiro horário da reserva.
+- [x] **Informar a regra de cancelamento antes de concluir** — depois do preenchimento, exibir diretamente que cancelamentos devem ser feitos com pelo menos 24 horas de antecedência do primeiro horário; após esse prazo, não serão aceitos.
+- [x] **Reduzir a espera ao consultar horários** — obter quadra, horários de funcionamento, exceção do dia e reservas ocupadas em uma única consulta; reutilizar por curto período a disponibilidade já carregada e evitar polling frequente ou em abas em segundo plano.
 
 ## Visibilidade das quadras e fluxo de horários
 

@@ -182,8 +182,7 @@ function Reservar() {
   const paymentConfigQuery = useQuery({
     queryKey: ["public-payment-config"],
     queryFn: () => fetchPaymentConfig(),
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 60_000,
     retry: false,
   });
   const paymentMode = paymentConfigQuery.data?.mode ?? null;
@@ -258,8 +257,10 @@ function Reservar() {
     queryKey: ["booking-availability", spaceId, date],
     queryFn: () => fetchAvailability({ data: { spaceId: spaceId!, date: date! } }),
     enabled: Boolean(spaceId && date),
-    refetchInterval: 30_000,
-    staleTime: 0,
+    refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 20_000,
   });
   const slots = useMemo(
     () => (availabilityQuery.data ?? []) as TimeSlot[],
@@ -1002,11 +1003,11 @@ function Reservar() {
             if (event.target === event.currentTarget) setCancellationDialogOpen(false);
           }}
         >
-          <span className="mono">ATENÇÃO · CANCELAMENTO</span>
-          <h2 id="booking-cancel-title">Antes de confirmar</h2>
+          <span className="mono">REGRA DE CANCELAMENTO</span>
+          <h2 id="booking-cancel-title">Avise com 24 horas</h2>
           <p id="booking-cancel-description">
-            O cancelamento só pode ser solicitado até <strong>15 horas antes</strong> do primeiro
-            horário da reserva. Depois desse prazo, não será permitido cancelar.
+            Cancelamentos devem ser feitos com pelo menos <strong>24 horas</strong> de antecedência
+            do primeiro horário da reserva. Depois desse prazo, não serão aceitos.
           </p>
           <div className="booking-payment-dialog__actions">
             <button type="button" className="btn" onClick={() => setCancellationDialogOpen(false)}>

@@ -31,7 +31,16 @@ type SpaceRow = {
   active: boolean;
   unit_id: string;
 };
-type AvailabilityRow = { start_time: string; end_time: string; payment_status: string };
+type AvailabilityRow = {
+  unit_id: string;
+  slot_minutes: number;
+  start_time: string | null;
+  end_time: string | null;
+  payment_status: string | null;
+  weekly_windows: unknown;
+  override_windows: unknown;
+  override_date: string | null;
+};
 type GroupCodeRow = { group_code: string };
 type SpacePriceRow = {
   id: string;
@@ -268,46 +277,53 @@ export const getAvailability = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const db = await database();
-    const spaces = (await db`
-      SELECT id, unit_id, slot_minutes FROM public.arena_spaces
-      WHERE id = ${data.spaceId} AND active = true AND price_cents > 0 AND unit_id IS NOT NULL
-      LIMIT 1
-    `) as unknown as Array<{ id: string; unit_id: string; slot_minutes: number }>;
-    const space = spaces[0];
-    if (!space) return [];
-    const [rows, hoursRows, overrideRows] = await Promise.all([
-      db`
-      SELECT to_char(start_time, 'HH24:MI') AS start_time,
-        to_char(end_time, 'HH24:MI') AS end_time, payment_status
-      FROM public.bookings
-      WHERE space_id = ${data.spaceId} AND booking_date = ${data.date}::date
-        AND payment_status IN ('pending', 'paid')
-      `,
-      db`
+    const rows = (await db`
+      SELECT s.unit_id, s.slot_minutes,
+        to_char(b.start_time, 'HH24:MI') AS start_time,
+        to_char(b.end_time, 'HH24:MI') AS end_time,
+        b.payment_status,
+        wh.windows AS weekly_windows,
+        ov.windows AS override_windows,
+        ov.booking_date::text AS override_date
+      FROM public.arena_spaces s
+      LEFT JOIN public.bookings b
+        ON b.space_id = s.id AND b.booking_date = ${data.date}::date
+        AND b.payment_status IN ('pending', 'paid')
+      LEFT JOIN LATERAL (
         SELECT windows FROM public.arena_weekly_hours
-        WHERE unit_id = ${space.unit_id} AND weekday = ${weekdayOf(data.date)}
+        WHERE unit_id = s.unit_id AND weekday = ${weekdayOf(data.date)}
         LIMIT 1
-      `,
-      db`
-        SELECT windows FROM public.arena_date_overrides
-        WHERE unit_id = ${space.unit_id} AND booking_date = ${data.date}::date
+      ) wh ON true
+      LEFT JOIN LATERAL (
+        SELECT booking_date, windows FROM public.arena_date_overrides
+        WHERE unit_id = s.unit_id AND booking_date = ${data.date}::date
         LIMIT 1
-      `,
-    ]);
-    const occupied = (rows as unknown as AvailabilityRow[]).map((row) => ({
-      start: String(row.start_time),
-      end: String(row.end_time),
-      status: String(row.payment_status),
-    }));
-    const dateOverride = (overrideRows as unknown as HoursRow[])[0];
-    const windows = normalizeWindows(
-      dateOverride ? dateOverride.windows : (hoursRows as unknown as HoursRow[])[0]?.windows,
+      ) ov ON true
+      WHERE s.id = ${data.spaceId} AND s.active = true
+        AND s.price_cents > 0 AND s.unit_id IS NOT NULL
+      ORDER BY b.start_time
+    `) as unknown as AvailabilityRow[];
+    const first = rows[0];
+    if (!first) return [];
+    const occupied = rows.flatMap((row) =>
+      row.start_time !== null && row.end_time !== null && row.payment_status !== null
+        ? [
+            {
+              start: row.start_time,
+              end: row.end_time,
+              status: row.payment_status,
+            },
+          ]
+        : [],
     );
-    return slotsFor(data.date, windows, Number(space.slot_minutes)).map((s) => {
+    const windows = normalizeWindows(
+      first.override_date !== null ? first.override_windows : first.weekly_windows,
+    );
+    return slotsFor(data.date, windows, Number(first.slot_minutes)).map((s) => {
       const conflict = occupied.find(
         (booked) => toMin(booked.start) < toMin(s.end) && toMin(booked.end) > toMin(s.start),
       );
-      const valid = validateSlot(data.date, s.start, windows, Number(space.slot_minutes));
+      const valid = validateSlot(data.date, s.start, windows, Number(first.slot_minutes));
       return {
         ...s,
         status:
