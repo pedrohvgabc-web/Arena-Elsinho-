@@ -1004,11 +1004,15 @@ function Reservar() {
           }}
         >
           <span className="mono">REGRA DE CANCELAMENTO</span>
-          <h2 id="booking-cancel-title">Avise com 24 horas</h2>
-          <p id="booking-cancel-description">
-            Cancelamentos devem ser feitos com pelo menos <strong>24 horas</strong> de antecedência
-            do primeiro horário da reserva. Depois desse prazo, não serão aceitos.
-          </p>
+          <h2 id="booking-cancel-title">Antes de confirmar</h2>
+          <div className="booking-cancel-callout" role="note">
+            <span className="booking-cancel-callout__badge" aria-hidden="true">
+              24h
+            </span>
+            <p id="booking-cancel-description">
+              Cancele com 24h de antecedência do primeiro horário. Depois, não será permitido.
+            </p>
+          </div>
           <div className="booking-payment-dialog__actions">
             <button type="button" className="btn" onClick={() => setCancellationDialogOpen(false)}>
               Voltar

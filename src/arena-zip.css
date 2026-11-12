@@ -2098,6 +2098,75 @@ tr:last-child td {
 .booking-cancel-dialog p strong {
   color: var(--ac);
 }
+.booking-cancel-callout {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.85rem;
+  overflow: hidden;
+  margin: 1rem 0 1.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgb(223 79 7 / 0.35);
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: 0 0 22px rgb(223 79 7 / 0.11);
+}
+.booking-cancel-callout::before {
+  position: absolute;
+  z-index: -2;
+  top: 50%;
+  left: 50%;
+  width: 165%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 286deg,
+    rgb(223 79 7 / 0.16) 310deg,
+    rgb(255 163 99 / 0.95) 329deg,
+    var(--ac) 340deg,
+    transparent 355deg
+  );
+  content: "";
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: booking-cancel-beam 3.6s linear infinite;
+}
+.booking-cancel-callout::after {
+  position: absolute;
+  z-index: -1;
+  inset: 2px;
+  border-radius: 12px;
+  background: var(--sf);
+  content: "";
+  pointer-events: none;
+}
+.booking-cancel-callout__badge {
+  display: grid;
+  width: 3rem;
+  min-height: 3rem;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--ac);
+  color: #fff;
+  font: italic 900 1.2rem/1 var(--fh);
+  box-shadow: 0 0 18px rgb(223 79 7 / 0.35);
+}
+.booking-cancel-callout p {
+  margin: 0;
+  color: var(--tx);
+  font-size: clamp(0.96rem, 0.9rem + 0.25vw, 1.05rem);
+  font-weight: 700;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+@keyframes booking-cancel-beam {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
 @keyframes booking-promo-float {
   0%,
   100% {
@@ -2297,6 +2366,7 @@ tr:last-child td {
   .booking-promo-dialog__stamp,
   .booking-cancel-dialog[open],
   .booking-cancel-dialog::backdrop,
+  .booking-cancel-callout::before,
   .booking-mobile-controls,
   .booking-flow [data-active="true"] {
     animation: none;

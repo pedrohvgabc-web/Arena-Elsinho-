@@ -20,6 +20,10 @@ services:
       - path: /*
         name: Permissions-Policy
         value: 'camera=(), microphone=(), geolocation=(self "https://www.google.com" "https://maps.google.com")'
+      # Revalidar respostas para não reapresentar copy antiga após uma publicação.
+      - path: /*
+        name: Cache-Control
+        value: no-cache
     routes:
       - type: rewrite
         source: /api/*
