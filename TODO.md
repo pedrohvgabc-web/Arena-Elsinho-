@@ -54,6 +54,12 @@
 - [x] **Reduzir repetição de cadastro no checkout** — pré-preencher nome e WhatsApp já informados na reserva quando suportado; nunca enviar CPF/endereço à InfinitePay; manter a Política de Privacidade precisa quanto aos dados compartilhados.
 - [ ] **Desativar cartão no checkout InfinitePay** — requisito solicitado, mas bloqueado pela documentação oficial: o cartão de crédito permanece sempre disponível; decidir entre manter o checkout InfinitePay com cartão disponível ou trocar para um provedor que permita Pix-only antes de marcar como atendido.
 
+## Confirmação automática e promoção interativa
+
+- [x] **Confirmar Pix automaticamente no painel** — processar webhook/retorno somente após `payment_check` server-to-server com valor exato; confirmar a reserva quando ainda houver disponibilidade; listar atualização no Admin em até 30 segundos e manter pagamentos conflitantes em revisão.
+- [x] **Exibir corretamente entrada e quitação** — após validar 30%, exibir no Admin “Falta pagar 70% do valor da reserva” com o saldo em reais; após validar 100%, exibir “Pago”; calcular percentuais somente sobre valores confirmados pelo provedor.
+- [x] **Tornar a promoção uma bolinha interativa na etapa dos dados** — pulsação lenta com anel, abrir modal de contraste alto com blur/fade e explicação dinâmica do preço; fechar por OK/Escape, restaurar o foco e respeitar preferência por movimento reduzido.
+
 ## Correções operacionais desta solicitação
 
 - [x] **Selecionar e reservar mais de um horário** — permitir selecionar vários horários livres para a mesma quadra/dia; enviar todos ao backend, validar e gravar juntos em transação, calcular o total pela quantidade selecionada e listar todos na confirmação; conflitos mantêm a reserva inteira sem gravação parcial.

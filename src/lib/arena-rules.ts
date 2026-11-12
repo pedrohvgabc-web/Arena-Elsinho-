@@ -241,6 +241,19 @@ export function verifiedPaymentAmountCents(
   }, 0);
 }
 
+export function paymentProgressPercentages(totalCents: number, receivedCents: number) {
+  const total = Number.isSafeInteger(totalCents) && totalCents > 0 ? totalCents : 0;
+  const safeReceived = Number.isSafeInteger(receivedCents) ? Math.max(0, receivedCents) : 0;
+  const received = Math.min(total, safeReceived);
+  const remaining = total - received;
+  return {
+    receivedCents: received,
+    remainingCents: remaining,
+    receivedPercentage: total ? Math.round((received * 100) / total) : 0,
+    remainingPercentage: total ? Math.round((remaining * 100) / total) : 0,
+  };
+}
+
 /** Junta horários escolhidos em faixas contínuas para leitura do cliente/admin. */
 export function groupRanges(starts: string[], slotMinutes = SLOT_MINUTES): Array<[string, string]> {
   const unique = [...new Set(starts)].sort();

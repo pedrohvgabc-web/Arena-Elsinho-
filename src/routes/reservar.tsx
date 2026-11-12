@@ -147,6 +147,9 @@ function Reservar() {
   const [paymentPlanLocked, setPaymentPlanLocked] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<BookingDraft | null>(null);
   const paymentDialogRef = useRef<HTMLDialogElement>(null);
+  const [promoDialogOpen, setPromoDialogOpen] = useState(false);
+  const promoDialogRef = useRef<HTMLDialogElement>(null);
+  const promoTriggerRef = useRef<HTMLButtonElement>(null);
 
   const paymentConfigQuery = useQuery({
     queryKey: ["public-payment-config"],
@@ -162,6 +165,12 @@ function Reservar() {
     if (paymentDialogOpen && !dialog.open) dialog.showModal();
     if (!paymentDialogOpen && dialog.open) dialog.close();
   }, [paymentDialogOpen]);
+  useEffect(() => {
+    const dialog = promoDialogRef.current;
+    if (!dialog) return;
+    if (promoDialogOpen && !dialog.open) dialog.showModal();
+    if (!promoDialogOpen && dialog.open) dialog.close();
+  }, [promoDialogOpen]);
   const paymentMethods = METHODS.map((method) =>
     method.value !== "pix"
       ? method
@@ -249,6 +258,10 @@ function Reservar() {
   const regularHourlyRateCents = selectedSpace
     ? Math.round((selectedSpace.price_cents * 60) / selectedSpace.slot_minutes)
     : 6_000;
+  const promoAvailable = regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR;
+  const promoHourlyRateCents = promoAvailable
+    ? MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+    : regularHourlyRateCents;
   const appliedHourlyRateCents = pricing?.promoApplied
     ? MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
     : regularHourlyRateCents;
@@ -509,44 +522,6 @@ function Reservar() {
                 )}
               </fieldset>
 
-              <div
-                className="booking-promo"
-                role="note"
-                aria-label={
-                  regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
-                    ? "Ao reservar mais de uma hora, a tarifa promocional é cinquenta reais por hora."
-                    : `Tarifa atual: ${formatBRL(regularHourlyRateCents)} por hora; a promoção não aumenta o valor.`
-                }
-              >
-                <span>Reservando</span>
-                <strong>
-                  mais de 1 hora
-                  <br />
-                  no total
-                </strong>
-                <span>
-                  {regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
-                    ? "você paga"
-                    : "tarifa atual"}
-                </span>
-                <b>
-                  {formatBRL(
-                    regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
-                      ? MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
-                      : regularHourlyRateCents,
-                  )}
-                </b>
-                <span>
-                  {regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
-                    ? "por hora · Vem aproveitar!!!"
-                    : "por hora; a promoção não aumenta a tarifa"}
-                </span>
-              </div>
-              <p className="booking-promo-hint">
-                O preço considera a duração real selecionada e é recalculado pelo servidor. Você
-                pode reservar até 16 horas por pedido, se a agenda estiver livre.
-              </p>
-
               <fieldset className={!date ? "lk" : ""} disabled={!date}>
                 <legend className="mono">
                   3 · Horários · até {maxSelectableSlots} blocos (máximo de 16 horas)
@@ -596,6 +571,32 @@ function Reservar() {
                 disabled={!selectedSlots.length}
               >
                 <legend className="mono">4 · Seus dados</legend>
+                <button
+                  ref={promoTriggerRef}
+                  type="button"
+                  className="booking-promo"
+                  aria-haspopup="dialog"
+                  aria-expanded={promoDialogOpen}
+                  aria-label={
+                    promoAvailable
+                      ? "Aperte para desbloquear sua promoção: R$ 50 por hora ao reservar mais de uma hora."
+                      : `Toque para ver a condição de preço desta quadra: ${formatBRL(regularHourlyRateCents)} por hora.`
+                  }
+                  onClick={() => setPromoDialogOpen(true)}
+                >
+                  <span>{promoAvailable ? "Aperte para" : "Toque para ver"}</span>
+                  <strong>
+                    {promoAvailable ? "Desbloquear sua promoção!" : "Sua tarifa por hora"}
+                  </strong>
+                  <b>{formatBRL(promoHourlyRateCents)}</b>
+                  <span>
+                    {promoAvailable ? "por hora · reservando mais de 1h" : "por hora nesta quadra"}
+                  </span>
+                </button>
+                <p className="booking-promo-hint">
+                  Toque na bolinha para ver como o desconto é aplicado. O total é calculado
+                  automaticamente ao selecionar os horários.
+                </p>
                 <div className="g2 f">
                   <label>
                     <span className="mono">Nome do responsável</span>
@@ -893,6 +894,39 @@ function Reservar() {
               )}
             </button>
           </div>
+        </dialog>
+        <dialog
+          ref={promoDialogRef}
+          className="booking-promo-dialog"
+          aria-labelledby="booking-promo-title"
+          aria-describedby="booking-promo-description"
+          aria-modal="true"
+          onCancel={(event) => {
+            event.preventDefault();
+            setPromoDialogOpen(false);
+          }}
+          onClose={() => setPromoDialogOpen(false)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPromoDialogOpen(false);
+          }}
+        >
+          <span className="mono">ARENA LESTE · VANTAGEM DESBLOQUEADA</span>
+          <h2 id="booking-promo-title">
+            {promoAvailable ? "Mais tempo na areia. Menos no bolso." : "Sua melhor tarifa"}
+          </h2>
+          <p id="booking-promo-description">
+            {promoAvailable
+              ? `Reserve por mais de 1 hora e aproveite: ${formatBRL(promoHourlyRateCents)} por hora em todo o período. Selecione os horários — o desconto é aplicado automaticamente no total. Vem aproveitar!`
+              : `A tarifa desta quadra já é ${formatBRL(regularHourlyRateCents)} por hora. Mantemos esse valor, pois a promoção não deve aumentar o preço.`}
+          </p>
+          <button
+            type="button"
+            className="btn pri lg booking-promo-dialog__ok"
+            autoFocus
+            onClick={() => setPromoDialogOpen(false)}
+          >
+            OK
+          </button>
         </dialog>
       </main>
     </div>

@@ -3,6 +3,7 @@ import {
   calculateBookingPrice,
   formatDuration,
   initialPaymentCents,
+  paymentProgressPercentages,
   splitAmountCents,
   verifiedPaymentAmountCents,
   validateSlot,
@@ -145,6 +146,21 @@ describe("preço promocional de reservas múltiplas", () => {
     expect(initialPaymentCents(20_000, "full")).toBe(20_000);
     expect(splitAmountCents(6_001, 4)).toEqual([1_501, 1_500, 1_500, 1_500]);
     expect(splitAmountCents(20_000, 4).reduce((sum, value) => sum + value, 0)).toBe(20_000);
+  });
+
+  it("mostra 70% pendente após validar a entrada de 30% e saldo zero no pagamento integral", () => {
+    expect(paymentProgressPercentages(20_000, 6_000)).toEqual({
+      receivedCents: 6_000,
+      remainingCents: 14_000,
+      receivedPercentage: 30,
+      remainingPercentage: 70,
+    });
+    expect(paymentProgressPercentages(20_000, 20_000)).toEqual({
+      receivedCents: 20_000,
+      remainingCents: 0,
+      receivedPercentage: 100,
+      remainingPercentage: 0,
+    });
   });
 
   it("formata duração real e só soma recebimentos verificados", () => {

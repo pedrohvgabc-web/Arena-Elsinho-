@@ -967,6 +967,8 @@ fieldset.lk {
   }
 }
 .booking-promo {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-content: center;
   justify-items: center;
@@ -981,6 +983,28 @@ fieldset.lk {
   color: #fff;
   text-align: center;
   box-shadow: 0 10px 40px rgb(223 79 7 / 0.28);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  animation: booking-promo-pulse 2.4s ease-in-out infinite;
+}
+.booking-promo::after {
+  position: absolute;
+  z-index: 0;
+  inset: -0.45rem;
+  border: 2px solid rgb(223 79 7 / 0.58);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+  animation: booking-promo-ring 2.4s ease-out infinite;
+}
+.booking-promo > * {
+  position: relative;
+  z-index: 1;
+}
+.booking-promo:focus-visible {
+  outline: 3px solid var(--tx);
+  outline-offset: 0.4rem;
 }
 .booking-promo strong {
   font: italic 800 1.05rem/1.03 var(--fh);
@@ -998,6 +1022,45 @@ fieldset.lk {
   margin: -0.5rem 0 var(--s1);
   color: var(--mu);
   font-size: 0.9rem;
+}
+.booking-promo-dialog {
+  width: min(100% - 2rem, 36rem);
+  max-height: min(88dvh, 34rem);
+  margin: auto;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  overflow: auto;
+  border: 1px solid var(--bd);
+  border-radius: 24px;
+  background: var(--sf);
+  color: var(--tx);
+  text-align: center;
+  box-shadow: 0 24px 90px rgb(0 0 0 / 0.38);
+}
+.booking-promo-dialog[open] {
+  animation: booking-dialog-in 0.26s var(--eo) both;
+}
+.booking-promo-dialog::backdrop {
+  background: rgb(10 12 15 / 0.68);
+  backdrop-filter: blur(6px) saturate(0.78);
+  opacity: 1;
+  animation: booking-promo-backdrop-in 0.26s ease-out both;
+}
+.booking-promo-dialog h2 {
+  margin: 1rem 0 0.8rem;
+  font: italic 800 clamp(2rem, 1.3rem + 3vw, 3rem) / 0.98 var(--fh);
+  text-transform: uppercase;
+}
+.booking-promo-dialog p {
+  max-width: 30rem;
+  margin: 0 auto 1.4rem;
+  color: var(--mu);
+  font-size: clamp(1rem, 0.94rem + 0.3vw, 1.12rem);
+  line-height: 1.6;
+}
+.booking-promo-dialog__ok {
+  min-width: 9rem;
+  min-height: 3rem;
+  justify-content: center;
 }
 .booking-promo-applied {
   color: var(--ac);
@@ -1114,6 +1177,26 @@ fieldset.lk {
     transform: translateY(0) scale(1);
   }
 }
+@keyframes booking-promo-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+}
+@keyframes booking-promo-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.98);
+  }
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
 @keyframes booking-backdrop-in {
   from {
     background-color: rgb(10 12 15 / 0);
@@ -1122,6 +1205,14 @@ fieldset.lk {
   to {
     background-color: rgb(10 12 15 / 0.56);
     backdrop-filter: blur(4px);
+  }
+}
+@keyframes booking-promo-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 @media (max-width: 34rem) {
@@ -1135,8 +1226,12 @@ fieldset.lk {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .booking-promo,
+  .booking-promo::after,
   .booking-payment-dialog[open],
-  .booking-payment-dialog::backdrop {
+  .booking-payment-dialog::backdrop,
+  .booking-promo-dialog[open],
+  .booking-promo-dialog::backdrop {
     animation: none;
   }
 }

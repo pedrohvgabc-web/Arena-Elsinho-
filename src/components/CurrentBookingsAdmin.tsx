@@ -17,6 +17,7 @@ import { SITE } from "@/lib/site";
 import {
   arenaNow,
   formatBRL,
+  paymentProgressPercentages,
   PAYMENT_LABEL,
   STATUS_LABEL,
   verifiedPaymentAmountCents,
@@ -60,6 +61,7 @@ type BookingGroup = {
   paymentNeedsReview: boolean;
   amountCents: number;
   chargeAmountCents: number;
+  expectedBalanceDueCents: number;
   balanceDueCents: number;
   receivedAmountCents: number;
   slots: Array<{ start: string; end: string }>;
@@ -134,7 +136,19 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
         (sum, row) => sum + Number(row.provider_amount_cents ?? 0),
         0,
       );
-      const balanceDueCents = Math.max(0, amountCents - chargeAmountCents);
+      const receivedAmountCents = verifiedPaymentAmountCents(
+        items.map((row) => ({
+          provider: row.payment_provider,
+          providerStatus: row.provider_payment_status,
+          bookingStatus: row.payment_status,
+          amountCents: row.provider_amount_cents,
+        })),
+      );
+      const expectedBalanceDueCents = Math.max(0, amountCents - chargeAmountCents);
+      const balanceDueCents =
+        first.payment_provider === "infinitepay"
+          ? Math.max(0, amountCents - receivedAmountCents)
+          : expectedBalanceDueCents;
       return {
         id: first.id,
         code,
@@ -148,15 +162,9 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
         paymentNeedsReview,
         amountCents,
         chargeAmountCents,
+        expectedBalanceDueCents,
         balanceDueCents,
-        receivedAmountCents: verifiedPaymentAmountCents(
-          items.map((row) => ({
-            provider: row.payment_provider,
-            providerStatus: row.provider_payment_status,
-            bookingStatus: row.payment_status,
-            amountCents: row.provider_amount_cents,
-          })),
-        ),
+        receivedAmountCents,
         slots: items.map((row) => ({ start: row.start_time, end: row.end_time })),
       };
     })
@@ -416,6 +424,17 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
               <ul className="space-y-3">
                 {filteredGroups.map((booking) => {
                   const unit = SITE.units.find((item) => item.id === booking.unitId);
+                  const paymentProgress = paymentProgressPercentages(
+                    booking.amountCents,
+                    booking.receivedAmountCents,
+                  );
+                  const statusLabel = booking.paymentNeedsReview
+                    ? "Pagamento recebido · revisar"
+                    : booking.paymentLabel.includes("InfinitePay") &&
+                        booking.status === "paid" &&
+                        booking.balanceDueCents > 0
+                      ? `Falta pagar ${paymentProgress.remainingPercentage}%`
+                      : STATUS_LABEL[booking.status];
                   const message = `Olá, ${booking.name.split(" ")[0]}! Sobre sua reserva ${booking.code} na ${unit?.name ?? "Arena Leste"}, ${booking.date.split("-").reverse().join("/")} às ${formatSlotRanges(booking.slots)}.`;
                   return (
                     <li
@@ -436,9 +455,7 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${BADGE[booking.status]}`}
                         >
-                          {booking.status === "paid" && booking.balanceDueCents > 0
-                            ? "Entrada paga · saldo pendente"
-                            : STATUS_LABEL[booking.status]}
+                          {statusLabel}
                         </span>
                       </div>
                       {booking.paymentNeedsReview && (
@@ -460,18 +477,8 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
                           {booking.paymentLabel.includes("InfinitePay") ? (
                             <p className="mt-1 text-xs text-muted-foreground">
                               {booking.receivedAmountCents > 0
-                                ? booking.paymentNeedsReview
-                                  ? "Recebido · revisão necessária"
-                                  : "Recebido"
-                                : "Cobrança pendente"}
-                              :{" "}
-                              {formatBRL(
-                                booking.receivedAmountCents > 0
-                                  ? booking.receivedAmountCents
-                                  : booking.chargeAmountCents,
-                              )}{" "}
-                              · total: {formatBRL(booking.amountCents)} · saldo:{" "}
-                              {formatBRL(booking.balanceDueCents)}
+                                ? `${booking.paymentNeedsReview ? "Pagamento recebido · revisão necessária" : `Recebido ${paymentProgress.receivedPercentage}%`}: ${formatBRL(booking.receivedAmountCents)}${booking.balanceDueCents > 0 ? ` · Falta pagar ${paymentProgress.remainingPercentage}% do valor da reserva: ${formatBRL(booking.balanceDueCents)}` : " · Pago integralmente"}`
+                                : `Cobrança pendente: ${formatBRL(booking.chargeAmountCents)} · total: ${formatBRL(booking.amountCents)} · após a cobrança, restará ${formatBRL(booking.expectedBalanceDueCents)}`}
                             </p>
                           ) : booking.balanceDueCents > 0 ? (
                             <p className="mt-1 text-xs text-muted-foreground">
