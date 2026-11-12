@@ -67,3 +67,11 @@
 - [x] **Corrigir o salvamento da grade no admin** — persistir a alteração do dia no Neon como operação principal; uma falha na auditoria não desfaz o horário salvo; comunicar sessão expirada/erro; atualizar a grade do painel e invalidar datas e disponibilidade públicas após salvar ou copiar a semana.
 - [x] **Tornar a pré-inscrição repetível em caso de falha** — não consumir o limite por telefone antes de a inscrição e a auditoria gravarem com sucesso; não enviar campos de atletas opcionais vazios; manter log técnico limitado a código/constraint, sem dados pessoais.
 - [ ] **Confirmar o fluxo comercial no site publicado** — após implantação, a Arena deve salvar um dia/horário real no painel e confirmar que ele aparece na reserva pública; verificar um quarteto com quatro primeiros nomes e uma reserva com múltiplos horários, sem inserir dados fictícios na base comercial.
+
+## Reserva mobile: calendário e navegação por etapas
+
+- [x] **Simplificar o fluxo em celular** — em telas móveis, mostrar uma etapa por vez (unidade/quadra, data, horários e dados); após selecionar e tocar em “Próximo”, avançar lateralmente para a próxima etapa, permitir voltar sem perder escolhas e exibir progresso e resumo compacto; preservar o formulário completo em telas maiores.
+- [x] **Ampliar a agenda pública** — permitir escolher dias abertos desde hoje até 180 dias à frente, com navegação mensal em calendário compacto; respeitar os horários semanais e exceções/feriados configurados no admin e manter a validação final no servidor, inclusive em chamadas diretas ao backend.
+- [x] **Acelerar a escolha de quadras** — pré-carregar as quadras no carregamento inicial da rota e reutilizar a resposta cacheada na consulta cliente, evitando esperar por uma busca adicional após abrir a reserva.
+- [x] **Flutuar e simplificar a promoção** — manter uma bolinha flutuante na área de reserva com somente “Aperte para liberar sua PROMOÇÃO”; ao abrir, exibir uma mensagem curta e comercial com o valor correto, animação responsiva e fechamento por OK/Escape, respeitando movimento reduzido e sem encobrir os controles.
+- [x] **Informar a regra de cancelamento antes de concluir** — depois do preenchimento, exibir que cancelamentos só podem ser solicitados até 15 horas antes do primeiro horário da reserva.

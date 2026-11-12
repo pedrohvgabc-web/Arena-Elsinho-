@@ -10,6 +10,7 @@ import {
   splitAmountCents,
   MAX_SLOTS,
   MAX_BOOKING_MINUTES,
+  BOOKING_HORIZON_DAYS,
   weekdayOf,
   toMin,
   validateOpeningWindows,
@@ -216,7 +217,7 @@ export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
   }
 });
 
-/** Publica apenas datas cujo dia da semana tem pelo menos uma janela configurada. */
+/** Publica apenas datas abertas dentro da janela futura de seis meses. */
 export const getPublicBookingDates = createServerFn({ method: "GET" })
   .inputValidator(z.object({ unitId: z.enum(["unidade-1", "unidade-2"]) }))
   .handler(async ({ data }) => {
@@ -232,7 +233,7 @@ export const getPublicBookingDates = createServerFn({ method: "GET" })
         FROM public.arena_date_overrides
         WHERE unit_id = ${data.unitId}
           AND booking_date >= ${today}::date
-          AND booking_date < (${today}::date + 14)
+          AND booking_date < (${today}::date + ${BOOKING_HORIZON_DAYS + 1})
       `,
     ]);
     const weekly = new Map(
@@ -248,7 +249,7 @@ export const getPublicBookingDates = createServerFn({ method: "GET" })
       ]),
     );
     const base = new Date(`${today}T12:00:00Z`);
-    return Array.from({ length: 14 }, (_, index) => {
+    return Array.from({ length: BOOKING_HORIZON_DAYS + 1 }, (_, index) => {
       const date = new Date(base);
       date.setUTCDate(date.getUTCDate() + index);
       return date.toISOString().slice(0, 10);

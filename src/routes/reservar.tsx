@@ -15,6 +15,8 @@ import {
   ARENA_TZ,
   arenaNow,
   calculateBookingPrice,
+  calendarMonthDays,
+  BOOKING_HORIZON_DAYS,
   formatDuration,
   formatBRL,
   initialPaymentCents,
@@ -87,11 +89,18 @@ function dateLabel(dateISO: string) {
     timeZone: ARENA_TZ,
   }).format(new Date(Date.UTC(year ?? 2026, (month ?? 1) - 1, day ?? 1, 12)));
 }
-function shortWeekday(dateISO: string) {
-  if (dateISO === arenaNow().date) return "Hoje";
-  return new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: ARENA_TZ })
-    .format(new Date(`${dateISO}T12:00:00Z`))
-    .replace(".", "");
+function calendarMonthLabel(monthISO: string) {
+  const [year = 2026, month = 1] = monthISO.split("-").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: ARENA_TZ,
+  }).format(new Date(Date.UTC(year, month - 1, 1, 12)));
+}
+function shiftMonth(monthISO: string, change: number) {
+  const [year = 2026, month = 1] = monthISO.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + change, 1, 12));
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}`;
 }
 function formatSlot(slot: { start: string; end: string }) {
   const end = slot.end.slice(0, 5);
@@ -99,6 +108,7 @@ function formatSlot(slot: { start: string; end: string }) {
 }
 
 export const Route = createFileRoute("/reservar")({
+  loader: async () => await getSpaces(),
   validateSearch: (search: Record<string, unknown>) => ({
     unit: UNIT_IDS.includes(search["unit"] as UnitId) ? (search["unit"] as UnitId) : undefined,
   }),
@@ -133,6 +143,7 @@ function Reservar() {
   const fetchAvailability = useServerFn(getAvailability);
   const submitBooking = useServerFn(createBooking);
   const queryClient = useQueryClient();
+  const initialSpaces = Route.useLoaderData();
   const [unitId, setUnitId] = useState<UnitId>(search.unit ?? "unidade-1");
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
@@ -150,6 +161,10 @@ function Reservar() {
   const [promoDialogOpen, setPromoDialogOpen] = useState(false);
   const promoDialogRef = useRef<HTMLDialogElement>(null);
   const promoTriggerRef = useRef<HTMLButtonElement>(null);
+  const cancellationDialogRef = useRef<HTMLDialogElement>(null);
+  const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
+  const [bookingStep, setBookingStep] = useState(1);
+  const [visibleMonth, setVisibleMonth] = useState(() => arenaNow().date.slice(0, 7));
 
   const paymentConfigQuery = useQuery({
     queryKey: ["public-payment-config"],
@@ -171,6 +186,12 @@ function Reservar() {
     if (promoDialogOpen && !dialog.open) dialog.showModal();
     if (!promoDialogOpen && dialog.open) dialog.close();
   }, [promoDialogOpen]);
+  useEffect(() => {
+    const dialog = cancellationDialogRef.current;
+    if (!dialog) return;
+    if (cancellationDialogOpen && !dialog.open) dialog.showModal();
+    if (!cancellationDialogOpen && dialog.open) dialog.close();
+  }, [cancellationDialogOpen]);
   const paymentMethods = METHODS.map((method) =>
     method.value !== "pix"
       ? method
@@ -190,6 +211,7 @@ function Reservar() {
   const spacesQuery = useQuery({
     queryKey: ["booking-spaces"],
     queryFn: () => fetchSpaces(),
+    initialData: initialSpaces,
     staleTime: 30_000,
   });
   const spaces = useMemo(() => (spacesQuery.data ?? []) as Space[], [spacesQuery.data]);
@@ -213,7 +235,12 @@ function Reservar() {
     enabled: unitSpaces.length > 0,
     staleTime: 60_000,
   });
-  const openDates = datesQuery.data ?? [];
+  const openDates = useMemo(() => datesQuery.data ?? [], [datesQuery.data]);
+  const openDateSet = useMemo(() => new Set(openDates), [openDates]);
+  const todayDate = arenaNow().date;
+  const firstCalendarMonth = todayDate.slice(0, 7);
+  const lastCalendarMonth = addDays(todayDate, BOOKING_HORIZON_DAYS).slice(0, 7);
+  const calendarDays = useMemo(() => calendarMonthDays(visibleMonth), [visibleMonth]);
   const availabilityQuery = useQuery({
     queryKey: ["booking-availability", spaceId, date],
     queryFn: () => fetchAvailability({ data: { spaceId: spaceId!, date: date! } }),
@@ -258,7 +285,10 @@ function Reservar() {
   const regularHourlyRateCents = selectedSpace
     ? Math.round((selectedSpace.price_cents * 60) / selectedSpace.slot_minutes)
     : 6_000;
-  const promoAvailable = regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR;
+  const promoAvailable = selectedSpace
+    ? (selectedSpace.price_cents * 60) / selectedSpace.slot_minutes >
+      MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
+    : regularHourlyRateCents > MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR;
   const promoHourlyRateCents = promoAvailable
     ? MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR
     : regularHourlyRateCents;
@@ -290,6 +320,7 @@ function Reservar() {
   }
   function chooseDate(nextDate: string) {
     setDate(nextDate);
+    setVisibleMonth(nextDate.slice(0, 7));
     setStarts([]);
     resetIdempotency();
   }
@@ -308,6 +339,48 @@ function Reservar() {
       );
     }
     resetIdempotency();
+  }
+
+  function goToBookingStep(nextStep: number) {
+    setBookingStep(nextStep);
+    setError(null);
+    requestAnimationFrame(() => {
+      const step = document.querySelector<HTMLElement>(`[data-booking-step="${nextStep}"]`);
+      if (!step) return;
+      step.focus({ preventScroll: true });
+      step.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function continueBookingStep() {
+    if (bookingStep === 1 && !selectedSpace) {
+      setError("Escolha uma quadra disponível para continuar.");
+      return;
+    }
+    if (bookingStep === 2 && !date) {
+      setError("Escolha um dia aberto para continuar.");
+      return;
+    }
+    if (bookingStep === 3 && !selectedSlots.length) {
+      setError("Escolha pelo menos um horário livre para continuar.");
+      return;
+    }
+    goToBookingStep(Math.min(4, bookingStep + 1));
+  }
+
+  function continueAfterCancellationNotice() {
+    cancellationDialogRef.current?.close();
+    setCancellationDialogOpen(false);
+    if (paymentMethod === "pix" && paymentMode === "infinitepay") {
+      setPaymentPlan("full");
+      setPaymentPlanLocked(false);
+      setPaymentDialogOpen(true);
+      return;
+    }
+    if (pendingDraft) void submitDraft(pendingDraft, "full");
   }
 
   async function finishBooking(event: FormEvent<HTMLFormElement>) {
@@ -337,13 +410,7 @@ function Reservar() {
     };
     setPendingDraft(draft);
     setError(null);
-    if (paymentMethod === "pix" && paymentMode === "infinitepay") {
-      setPaymentPlan("full");
-      setPaymentPlanLocked(false);
-      setPaymentDialogOpen(true);
-      return;
-    }
-    await submitDraft(draft, "full");
+    setCancellationDialogOpen(true);
   }
 
   async function submitDraft(draft: BookingDraft, selectedPlan: PaymentPlan) {
@@ -398,6 +465,9 @@ function Reservar() {
     setPaymentPlanLocked(false);
     setPendingDraft(null);
     setPaymentDialogOpen(false);
+    setCancellationDialogOpen(false);
+    setBookingStep(1);
+    setVisibleMonth(arenaNow().date.slice(0, 7));
   }
 
   const contactMessage = booking
@@ -427,6 +497,20 @@ function Reservar() {
           <b>sua quadra</b>
         </h1>
 
+        {!booking && (
+          <button
+            ref={promoTriggerRef}
+            type="button"
+            className="booking-promo"
+            aria-haspopup="dialog"
+            aria-expanded={promoDialogOpen}
+            aria-label="Aperte para liberar sua PROMOÇÃO"
+            onClick={() => setPromoDialogOpen(true)}
+          >
+            <span>Aperte para liberar sua PROMOÇÃO</span>
+          </button>
+        )}
+
         {booking ? (
           <BookingConfirmation
             booking={booking}
@@ -435,8 +519,8 @@ function Reservar() {
           />
         ) : (
           <form className="rv" onSubmit={finishBooking}>
-            <div>
-              <fieldset>
+            <div className="booking-flow">
+              <fieldset data-booking-step="1" data-active={bookingStep === 1} tabIndex={-1}>
                 <legend className="mono">1 · Unidade e quadra</legend>
                 <div className="opts">
                   {SITE.units.map((option, index) => (
@@ -489,7 +573,13 @@ function Reservar() {
                 </div>
               </fieldset>
 
-              <fieldset className={!selectedSpace ? "lk" : ""} disabled={!selectedSpace}>
+              <fieldset
+                data-booking-step="2"
+                data-active={bookingStep === 2}
+                tabIndex={-1}
+                className={!selectedSpace ? "lk" : ""}
+                disabled={!selectedSpace}
+              >
                 <legend className="mono">2 · Dia</legend>
                 {datesQuery.isLoading ? (
                   <p className="hint">
@@ -500,29 +590,71 @@ function Reservar() {
                     Não foi possível consultar a agenda.
                   </p>
                 ) : openDates.length ? (
-                  <div className="opts">
-                    {openDates.map((option) => (
+                  <div className="booking-calendar">
+                    <div className="booking-calendar__header">
                       <button
-                        key={option}
                         type="button"
-                        className="opt"
-                        aria-label={dateLabel(option)}
-                        aria-pressed={date === option}
-                        onClick={() => chooseDate(option)}
+                        className="booking-calendar__nav"
+                        aria-label="Mês anterior"
+                        disabled={visibleMonth <= firstCalendarMonth}
+                        onClick={() => setVisibleMonth((month) => shiftMonth(month, -1))}
                       >
-                        {shortWeekday(option)}
-                        <small>
-                          {option.slice(8, 10)}/{option.slice(5, 7)}
-                        </small>
+                        ‹
                       </button>
-                    ))}
+                      <strong aria-live="polite">{calendarMonthLabel(visibleMonth)}</strong>
+                      <button
+                        type="button"
+                        className="booking-calendar__nav"
+                        aria-label="Próximo mês"
+                        disabled={visibleMonth >= lastCalendarMonth}
+                        onClick={() => setVisibleMonth((month) => shiftMonth(month, 1))}
+                      >
+                        ›
+                      </button>
+                    </div>
+                    <p className="booking-calendar__range">
+                      Agenda aberta até {dateLabel(addDays(todayDate, BOOKING_HORIZON_DAYS))}.
+                    </p>
+                    <div className="booking-calendar__weekdays" aria-hidden="true">
+                      {["dom", "seg", "ter", "qua", "qui", "sex", "sáb"].map((day) => (
+                        <span key={day}>{day}</span>
+                      ))}
+                    </div>
+                    <div className="booking-calendar__grid">
+                      {calendarDays.map((calendarDate, index) =>
+                        calendarDate ? (
+                          <button
+                            key={calendarDate}
+                            type="button"
+                            className="booking-calendar__day"
+                            disabled={!openDateSet.has(calendarDate)}
+                            aria-label={dateLabel(calendarDate)}
+                            aria-pressed={date === calendarDate}
+                            onClick={() => chooseDate(calendarDate)}
+                          >
+                            {Number(calendarDate.slice(-2))}
+                          </button>
+                        ) : (
+                          <span key={`empty-${visibleMonth}-${index}`} aria-hidden="true" />
+                        ),
+                      )}
+                    </div>
+                    <p className="booking-calendar__legend">
+                      Dias destacados estão abertos; os demais não têm grade disponível.
+                    </p>
                   </div>
                 ) : (
                   <p className="hint">Nenhum dia aberto está configurado para esta unidade.</p>
                 )}
               </fieldset>
 
-              <fieldset className={!date ? "lk" : ""} disabled={!date}>
+              <fieldset
+                data-booking-step="3"
+                data-active={bookingStep === 3}
+                tabIndex={-1}
+                className={!date ? "lk" : ""}
+                disabled={!date}
+              >
                 <legend className="mono">
                   3 · Horários · até {maxSelectableSlots} blocos (máximo de 16 horas)
                 </legend>
@@ -567,36 +699,13 @@ function Reservar() {
               </fieldset>
 
               <fieldset
+                data-booking-step="4"
+                data-active={bookingStep === 4}
+                tabIndex={-1}
                 className={!selectedSlots.length ? "lk" : ""}
                 disabled={!selectedSlots.length}
               >
                 <legend className="mono">4 · Seus dados</legend>
-                <button
-                  ref={promoTriggerRef}
-                  type="button"
-                  className="booking-promo"
-                  aria-haspopup="dialog"
-                  aria-expanded={promoDialogOpen}
-                  aria-label={
-                    promoAvailable
-                      ? "Aperte para desbloquear sua promoção: R$ 50 por hora ao reservar mais de uma hora."
-                      : `Toque para ver a condição de preço desta quadra: ${formatBRL(regularHourlyRateCents)} por hora.`
-                  }
-                  onClick={() => setPromoDialogOpen(true)}
-                >
-                  <span>{promoAvailable ? "Aperte para" : "Toque para ver"}</span>
-                  <strong>
-                    {promoAvailable ? "Desbloquear sua promoção!" : "Sua tarifa por hora"}
-                  </strong>
-                  <b>{formatBRL(promoHourlyRateCents)}</b>
-                  <span>
-                    {promoAvailable ? "por hora · reservando mais de 1h" : "por hora nesta quadra"}
-                  </span>
-                </button>
-                <p className="booking-promo-hint">
-                  Toque na bolinha para ver como o desconto é aplicado. O total é calculado
-                  automaticamente ao selecionar os horários.
-                </p>
                 <div className="g2 f">
                   <label>
                     <span className="mono">Nome do responsável</span>
@@ -719,7 +828,66 @@ function Reservar() {
               </fieldset>
             </div>
 
-            <aside className="rs" aria-live="polite">
+            <nav className="booking-mobile-controls" aria-label="Etapas da reserva">
+              <div className="booking-mobile-controls__progress">
+                <span>Etapa {bookingStep} de 4</span>
+                <div aria-hidden="true">
+                  {[1, 2, 3, 4].map((step) => (
+                    <i key={step} data-complete={step <= bookingStep} />
+                  ))}
+                </div>
+              </div>
+              {error && (
+                <p className="booking-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <p className="booking-mobile-controls__summary">
+                {selectedSpace?.name ?? "Escolha uma quadra"}
+                {selectedSlots.length ? ` · ${formatDuration(selectedDurationMinutes)}` : ""}
+                <strong>{formatBRL(totalCents)}</strong>
+              </p>
+              <div className="booking-mobile-controls__actions">
+                {bookingStep > 1 && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => goToBookingStep(bookingStep - 1)}
+                  >
+                    Voltar
+                  </button>
+                )}
+                {bookingStep < 4 ? (
+                  <button
+                    type="button"
+                    className="btn pri lg"
+                    disabled={
+                      (bookingStep === 1 && !selectedSpace) ||
+                      (bookingStep === 2 && !date) ||
+                      (bookingStep === 3 && !selectedSlots.length)
+                    }
+                    onClick={continueBookingStep}
+                  >
+                    Próximo
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="btn pri lg"
+                    disabled={
+                      busy ||
+                      (paymentMethod === "pix" &&
+                        paymentMode !== "demo" &&
+                        paymentMode !== "infinitepay")
+                    }
+                  >
+                    {busy ? "Registrando…" : "Concluir reserva"}
+                  </button>
+                )}
+              </div>
+            </nav>
+
+            <aside className="rs booking-desktop-summary" aria-live="polite">
               <span className="mono">Resumo</span>
               <h3>{unit.name}</h3>
               <p>{unit.address}</p>
@@ -788,6 +956,41 @@ function Reservar() {
             </aside>
           </form>
         )}
+        <dialog
+          ref={cancellationDialogRef}
+          className="booking-cancel-dialog"
+          aria-labelledby="booking-cancel-title"
+          aria-describedby="booking-cancel-description"
+          aria-modal="true"
+          onCancel={(event) => {
+            event.preventDefault();
+            setCancellationDialogOpen(false);
+          }}
+          onClose={() => setCancellationDialogOpen(false)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setCancellationDialogOpen(false);
+          }}
+        >
+          <span className="mono">ATENÇÃO · CANCELAMENTO</span>
+          <h2 id="booking-cancel-title">Antes de confirmar</h2>
+          <p id="booking-cancel-description">
+            O cancelamento só pode ser solicitado até <strong>15 horas antes</strong> do primeiro
+            horário da reserva. Depois desse prazo, não será permitido cancelar.
+          </p>
+          <div className="booking-payment-dialog__actions">
+            <button type="button" className="btn" onClick={() => setCancellationDialogOpen(false)}>
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="btn pri lg"
+              autoFocus
+              onClick={continueAfterCancellationNotice}
+            >
+              Entendi, continuar
+            </button>
+          </div>
+        </dialog>
         <dialog
           ref={paymentDialogRef}
           className="booking-payment-dialog"
@@ -905,19 +1108,27 @@ function Reservar() {
             event.preventDefault();
             setPromoDialogOpen(false);
           }}
-          onClose={() => setPromoDialogOpen(false)}
+          onClose={() => {
+            setPromoDialogOpen(false);
+            promoTriggerRef.current?.focus();
+          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) setPromoDialogOpen(false);
           }}
         >
+          <span className="booking-promo-dialog__stamp" aria-hidden="true">
+            {promoAvailable ? `${formatBRL(promoHourlyRateCents)} / hora` : "TARIFA DA QUADRA"}
+          </span>
           <span className="mono">ARENA LESTE · VANTAGEM DESBLOQUEADA</span>
           <h2 id="booking-promo-title">
-            {promoAvailable ? "Mais tempo na areia. Menos no bolso." : "Sua melhor tarifa"}
+            {promoAvailable ? "Mais jogo. Menos gasto." : "Sua melhor tarifa"}
           </h2>
           <p id="booking-promo-description">
-            {promoAvailable
-              ? `Reserve por mais de 1 hora e aproveite: ${formatBRL(promoHourlyRateCents)} por hora em todo o período. Selecione os horários — o desconto é aplicado automaticamente no total. Vem aproveitar!`
-              : `A tarifa desta quadra já é ${formatBRL(regularHourlyRateCents)} por hora. Mantemos esse valor, pois a promoção não deve aumentar o preço.`}
+            {!selectedSpace
+              ? "Escolha uma quadra: nas que têm tarifa acima de R$50/h, reservando mais de 1 hora você paga R$50/h."
+              : promoAvailable
+                ? `Reserve mais de 1 hora e pague ${formatBRL(promoHourlyRateCents)} por hora. A economia entra automaticamente no total. Bora garantir seu horário?`
+                : `Esta quadra já está por ${formatBRL(regularHourlyRateCents)} por hora. Mantemos a tarifa configurada, sem aumentar o preço.`}
           </p>
           <button
             type="button"

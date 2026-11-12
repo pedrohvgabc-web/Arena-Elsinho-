@@ -78,10 +78,35 @@ export function weekdayOf(dateISO: string) {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
+/** Agenda pública navegável até seis meses à frente. */
+export const BOOKING_HORIZON_DAYS = 180;
+
+/** Dias de um mês para um calendário que começa no domingo; null representa célula vazia. */
+export function calendarMonthDays(monthISO: string): Array<string | null> {
+  if (!/^\d{4}-\d{2}$/.test(monthISO)) return [];
+  const [year = 0, month = 0] = monthISO.split("-").map(Number);
+  if (month < 1 || month > 12 || year < 1) return [];
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const prefix: Array<string | null> = Array.from({ length: firstWeekday }, () => null);
+  const days = Array.from(
+    { length: daysInMonth },
+    (_, index) => `${monthISO}-${String(index + 1).padStart(2, "0")}`,
+  );
+  return [...prefix, ...days];
+}
+
 function validDate(dateISO: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return false;
   const [year = 0, month = 0, day = 0] = dateISO.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === dateISO;
+}
+
+export function isWithinBookingHorizon(dateISO: string, todayISO: string) {
+  if (!validDate(dateISO) || !validDate(todayISO) || dateISO < todayISO) return false;
+  const latest = new Date(`${todayISO}T12:00:00Z`);
+  latest.setUTCDate(latest.getUTCDate() + BOOKING_HORIZON_DAYS);
+  return dateISO <= latest.toISOString().slice(0, 10);
 }
 
 function validTime(time: string, allowEndOfDay = false) {
@@ -154,8 +179,11 @@ export function validateSlot(
 ): SlotCheck {
   if (!validDate(dateISO) || !validTime(start))
     return { ok: false, reason: "Data ou horário inválido." };
-  if (dateISO < arenaNow(now).date)
+  const current = arenaNow(now);
+  if (dateISO < current.date)
     return { ok: false, reason: "Não é possível reservar datas passadas." };
+  if (!isWithinBookingHorizon(dateISO, current.date))
+    return { ok: false, reason: "A agenda aceita reservas até 180 dias à frente." };
   const slot = slotsFor(dateISO, windows, slotMinutes).find((item) => item.start === start);
   if (!slot)
     return {
@@ -164,7 +192,6 @@ export function validateSlot(
         ? "Horário fora do expediente."
         : "A grade desta unidade ainda não foi configurada para este dia.",
     };
-  const current = arenaNow(now);
   if (dateISO === current.date && toMin(start) <= current.minutes)
     return { ok: false, reason: "Esse horário já passou." };
   return { ok: true, end: slot.end };

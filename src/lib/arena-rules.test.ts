@@ -11,6 +11,9 @@ import {
   normalizePhone,
   suggestOpeningWindow,
   validateOpeningWindows,
+  calendarMonthDays,
+  BOOKING_HORIZON_DAYS,
+  isWithinBookingHorizon,
   type OpeningWindow,
 } from "./arena-rules";
 
@@ -23,6 +26,42 @@ const TUESDAY: OpeningWindow[] = [
 ];
 
 describe("regras de funcionamento configuráveis", () => {
+  it("fornece calendário mensal alinhado ao domingo e janela de agenda de seis meses", () => {
+    expect(BOOKING_HORIZON_DAYS).toBe(180);
+    expect(calendarMonthDays("2026-04").slice(0, 5)).toEqual([
+      null,
+      null,
+      null,
+      "2026-04-01",
+      "2026-04-02",
+    ]);
+    expect(calendarMonthDays("2026-04")).toHaveLength(33);
+    expect(calendarMonthDays("2026-13")).toEqual([]);
+  });
+
+  it("valida no servidor o limite superior de 180 dias para reservas", () => {
+    const latest = new Date("2026-10-23T12:00:00Z");
+    latest.setUTCDate(latest.getUTCDate() + BOOKING_HORIZON_DAYS);
+    const latestISO = latest.toISOString().slice(0, 10);
+    const afterLatest = new Date(latest);
+    afterLatest.setUTCDate(afterLatest.getUTCDate() + 1);
+    expect(isWithinBookingHorizon("2026-10-23", "2026-10-23")).toBe(true);
+    expect(isWithinBookingHorizon(latestISO, "2026-10-23")).toBe(true);
+    expect(isWithinBookingHorizon(afterLatest.toISOString().slice(0, 10), "2026-10-23")).toBe(
+      false,
+    );
+    expect(
+      validateSlot(
+        afterLatest.toISOString().slice(0, 10),
+        "08:00",
+        [{ start: "08:00", end: "09:00" }],
+        60,
+        NOW,
+      ),
+    ).toEqual({ ok: false, reason: "A agenda aceita reservas até 180 dias à frente." });
+    expect(isWithinBookingHorizon("2026-10-22", "2026-10-23")).toBe(false);
+  });
+
   it("sugere um segundo intervalo válido, sem sobrepor o padrão 17h–23h", () => {
     const suggestion = suggestOpeningWindow([{ start: "17:00", end: "23:00" }]);
     expect(suggestion).toEqual({ start: "08:00", end: "12:00" });
@@ -99,6 +138,14 @@ describe("preço promocional de reservas múltiplas", () => {
   it("calcula o valor por hora proporcional à duração do horário", () => {
     expect(calculateBookingPrice(9_000, 90, 2)).toEqual({
       perSlotCents: 7_500,
+      totalCents: 15_000,
+      promoApplied: true,
+    });
+  });
+
+  it("aplica a promoção quando a taxa é um pouco acima de R$50/h mesmo arredondada na UI", () => {
+    expect(calculateBookingPrice(15_001, 180, 1)).toEqual({
+      perSlotCents: 15_000,
       totalCents: 15_000,
       promoApplied: true,
     });
