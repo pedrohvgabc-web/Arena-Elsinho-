@@ -737,7 +737,7 @@ function Reservar() {
                 className={!selectedSlots.length ? "lk" : ""}
                 disabled={!selectedSlots.length}
               >
-                <legend className="mono">4 · Seus dados</legend>
+                <legend className="mono">3 · Seus dados</legend>
                 <div className="g2 f">
                   <label>
                     <span className="mono">Nome do responsável</span>
