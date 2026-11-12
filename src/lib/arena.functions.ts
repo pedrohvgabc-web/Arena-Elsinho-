@@ -51,6 +51,16 @@ type SpacePriceRow = {
 type OccupiedRow = { start_time: string };
 type HoursRow = { windows: unknown };
 type InsertedBookingRow = { id: string };
+type ReleasedSlot = { start: string; end: string };
+type ReleasedSlotOfferRow = {
+  id: string;
+  unit_id: "unidade-1" | "unidade-2";
+  space_id: string;
+  space_name: string;
+  booking_date: string;
+  slots: unknown;
+  expires_at: string;
+};
 type PublicBookingRow = {
   group_code: string;
   booking_date: string;
@@ -89,6 +99,7 @@ type BookingAdminRow = {
   notes: string | null;
   space_id: string;
   created_at: string;
+  cancellation_deadline_passed?: boolean;
 };
 type AdminSpaceRow = { id: string; name: string };
 type BookingPendingRow = {
@@ -103,7 +114,20 @@ type BookingPendingRow = {
   space_id: string;
   space_name: string | null;
 };
-type LockedBookingRow = { payment_method: string; payment_status: string; group_code: string };
+type LockedBookingRow = {
+  payment_method: string;
+  payment_status: string;
+  group_code: string;
+  space_id: string;
+};
+type ReleasableBookingRow = {
+  id: string;
+  space_id: string;
+  unit_id: string | null;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+};
 type BookingPaymentReviewRow = { provider: string; provider_status: string };
 
 const database = async () => (await import("./db.server")).getDb();
@@ -225,6 +249,74 @@ export const getSpaces = createServerFn({ method: "GET" }).handler(async () => {
   } finally {
     if (spacesPending === pending) spacesPending = undefined;
   }
+});
+
+function normalizeReleasedSlots(value: unknown): ReleasedSlot[] {
+  let slots = value;
+  if (typeof slots === "string") {
+    try {
+      slots = JSON.parse(slots) as unknown;
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(slots)) return [];
+  return slots.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const start = typeof row["start"] === "string" ? row["start"] : "";
+    const end = typeof row["end"] === "string" ? row["end"] : "";
+    return /^\d{2}:\d{2}$/.test(start) && /^\d{2}:\d{2}$/.test(end) && toMin(end) > toMin(start)
+      ? [{ start, end }]
+      : [];
+  });
+}
+
+/** Publica somente localização/horários temporariamente liberados, sem dados do cliente. */
+export const getPublicReleasedSlotOffers = createServerFn({ method: "GET" }).handler(async () => {
+  const db = await database();
+  const rows = (await db`
+    SELECT o.id::text AS id, s.unit_id, o.space_id, s.name AS space_name,
+      o.booking_date::text AS booking_date, o.slots, o.expires_at::text AS expires_at
+    FROM public.released_slot_offers o
+    INNER JOIN public.arena_spaces s ON s.id = o.space_id
+    WHERE o.claimed_at IS NULL AND o.expires_at > now()
+      AND s.active = true AND s.price_cents > 0
+      AND s.unit_id IN ('unidade-1', 'unidade-2')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(o.slots) AS offered(slot)
+        WHERE (o.booking_date + (offered.slot ->> 'start')::time)
+          AT TIME ZONE 'America/Porto_Velho' <= now()
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(o.slots) AS offered(slot)
+        INNER JOIN public.bookings b
+          ON b.space_id = o.space_id AND b.booking_date = o.booking_date
+          AND b.start_time < (offered.slot ->> 'end')::time
+          AND b.end_time > (offered.slot ->> 'start')::time
+          AND b.payment_status IN ('pending', 'paid')
+      )
+    ORDER BY o.created_at DESC
+    LIMIT 20
+  `) as unknown as ReleasedSlotOfferRow[];
+  return rows.flatMap((row) => {
+    const slots = normalizeReleasedSlots(row.slots);
+    return slots.length
+      ? [
+          {
+            id: String(row.id),
+            unitId: row.unit_id,
+            spaceId: String(row.space_id),
+            spaceName: String(row.space_name),
+            date: String(row.booking_date),
+            slots,
+            expiresAt: String(row.expires_at),
+          },
+        ]
+      : [];
+  });
 });
 
 /** Publica apenas datas abertas dentro da janela futura de seis meses. */
@@ -356,6 +448,7 @@ const bookingSchema = z.object({
   notes: z.string().trim().max(500).optional().default(""),
   method: z.enum(["pix", "card_onsite", "cash_onsite"]),
   paymentPlan: z.enum(["full", "deposit_30"]).default("full"),
+  releasedOfferId: z.string().uuid().optional(),
   idempotencyKey: z.string().uuid(),
 });
 
@@ -464,6 +557,44 @@ export const createBooking = createServerFn({ method: "POST" })
           return { code: null, error: "Você pode reservar até 16 horas por pedido." };
         }
 
+        if (data.releasedOfferId) {
+          const offers = (await tx`
+            SELECT o.id::text AS id, o.space_id, o.booking_date::text AS booking_date,
+              o.slots, o.expires_at > now() AS active, o.claimed_at, s.unit_id
+            FROM public.released_slot_offers o
+            INNER JOIN public.arena_spaces s ON s.id = o.space_id
+            WHERE o.id = ${data.releasedOfferId}::uuid
+            FOR UPDATE OF o
+          `) as unknown as Array<{
+            id: string;
+            space_id: string;
+            booking_date: string;
+            slots: unknown;
+            active: boolean;
+            claimed_at: string | null;
+            unit_id: string;
+          }>;
+          const offer = offers[0];
+          const offeredSlots = offer ? normalizeReleasedSlots(offer.slots) : [];
+          const offeredStarts = offeredSlots.map((slot) => slot.start).sort();
+          if (
+            !offer ||
+            !offer.active ||
+            offer.claimed_at !== null ||
+            offer.space_id !== space.id ||
+            offer.unit_id !== data.unitId ||
+            offer.booking_date !== data.date ||
+            offeredStarts.length !== starts.length ||
+            offeredStarts.some((start, index) => start !== starts[index])
+          ) {
+            return {
+              code: null,
+              error:
+                "Este aviso expirou ou o horário já foi reservado. Escolha outro horário livre.",
+            };
+          }
+        }
+
         // Give the customer a clear response before creating a payment; the exclusion
         // constraint remains the final protection against concurrent reservations.
         const occupied = (await tx`
@@ -476,6 +607,23 @@ export const createBooking = createServerFn({ method: "POST" })
         if (taken.length) {
           const times = taken.map((row) => String(row.start_time)).join(", ");
           return { code: null, error: `Estes horários já foram reservados: ${times}.` };
+        }
+
+        if (data.releasedOfferId) {
+          const claimed = (await tx`
+            UPDATE public.released_slot_offers
+            SET claimed_at = now(), claimed_group_code = ${code}
+            WHERE id = ${data.releasedOfferId}::uuid
+              AND claimed_at IS NULL AND expires_at > now()
+            RETURNING id
+          `) as unknown as Array<{ id: string }>;
+          if (!claimed[0]) {
+            return {
+              code: null,
+              error:
+                "Este aviso expirou ou o horário já foi reservado. Escolha outro horário livre.",
+            };
+          }
         }
 
         const pricing = calculateBookingPrice(
@@ -1410,7 +1558,9 @@ export const adminCurrentDay = createServerFn({ method: "GET" })
         p.capture_method AS provider_capture_method, p.amount_cents AS provider_amount_cents,
         b.amount_cents,
         b.notes, b.space_id, b.created_at::text AS created_at,
-        s.name AS space_name, s.unit_id
+        s.name AS space_name, s.unit_id,
+        ((b.booking_date + b.start_time) AT TIME ZONE 'America/Porto_Velho'
+          <= now() + interval '24 hours') AS cancellation_deadline_passed
       FROM public.bookings b
       INNER JOIN public.arena_spaces s ON s.id = b.space_id
       LEFT JOIN public.payments p ON p.booking_id = b.id
@@ -1454,7 +1604,9 @@ export const adminCurrentBookings = createServerFn({ method: "GET" })
         p.capture_method AS provider_capture_method, p.amount_cents AS provider_amount_cents,
         b.amount_cents,
         b.notes, b.space_id, b.created_at::text AS created_at,
-        s.name AS space_name, s.unit_id
+        s.name AS space_name, s.unit_id,
+        ((b.booking_date + b.start_time) AT TIME ZONE 'America/Porto_Velho'
+          <= now() + interval '24 hours') AS cancellation_deadline_passed
       FROM public.bookings b
       INNER JOIN public.arena_spaces s ON s.id = b.space_id
       LEFT JOIN public.payments p ON p.booking_id = b.id
@@ -1495,6 +1647,7 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
       id: z.string().uuid(),
       action: z.enum(["mark_paid", "cancel", "note", "confirm_received_payment"]),
       note: z.string().max(500).optional(),
+      confirmLateCancel: z.boolean().optional(),
     }),
   )
   .handler(async ({ data }) => {
@@ -1504,11 +1657,47 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
     try {
       const result = await db.begin(async (tx) => {
         const bookings = (await tx`
-        SELECT payment_method, payment_status, group_code
+        SELECT payment_method, payment_status, group_code, space_id
         FROM public.bookings WHERE id = ${data.id}::uuid FOR UPDATE
       `) as unknown as LockedBookingRow[];
         const booking = bookings[0];
         if (!booking) return { ok: false, error: "Reserva não encontrada." };
+
+        let cancellableBookings: ReleasableBookingRow[] = [];
+        if (data.action === "cancel") {
+          cancellableBookings = (await tx`
+            SELECT b.id::text AS id, b.space_id, s.unit_id,
+              b.booking_date::text AS booking_date,
+              to_char(b.start_time, 'HH24:MI') AS start_time,
+              to_char(b.end_time, 'HH24:MI') AS end_time
+            FROM public.bookings b
+            LEFT JOIN public.arena_spaces s ON s.id = b.space_id
+            WHERE b.group_code = ${booking.group_code}
+              AND b.payment_status IN ('pending', 'paid')
+            ORDER BY b.booking_date, b.start_time
+            FOR UPDATE OF b
+          `) as unknown as ReleasableBookingRow[];
+          if (!cancellableBookings.length) {
+            return { ok: false, error: "Esta reserva já foi cancelada ou não está mais ativa." };
+          }
+          const deadline = (await tx`
+            SELECT ((booking_date + start_time) AT TIME ZONE 'America/Porto_Velho'
+              <= now() + interval '24 hours') AS passed
+            FROM public.bookings
+            WHERE group_code = ${booking.group_code}
+              AND payment_status IN ('pending', 'paid')
+            ORDER BY booking_date, start_time
+            LIMIT 1
+          `) as unknown as Array<{ passed: boolean }>;
+          if (deadline[0]?.passed && data.confirmLateCancel !== true) {
+            return {
+              ok: false,
+              error:
+                "Esta reserva já passou do prazo permitido para cancelamento. Deseja mesmo cancelar?",
+              requiresLateCancelConfirmation: true,
+            };
+          }
+        }
 
         if (data.action === "confirm_received_payment") {
           const reviewRows = (await tx`
@@ -1617,6 +1806,27 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
           )
             AND status <> 'paid'
         `;
+          const offers = new Map<
+            string,
+            { spaceId: string; date: string; slots: ReleasedSlot[] }
+          >();
+          for (const row of cancellableBookings) {
+            if (row.unit_id !== "unidade-1" && row.unit_id !== "unidade-2") continue;
+            const key = `${row.space_id}:${row.booking_date}`;
+            const offer = offers.get(key) ?? {
+              spaceId: row.space_id,
+              date: row.booking_date,
+              slots: [],
+            };
+            offer.slots.push({ start: row.start_time, end: row.end_time });
+            offers.set(key, offer);
+          }
+          for (const offer of offers.values()) {
+            await tx`
+              INSERT INTO public.released_slot_offers (space_id, booking_date, slots)
+              VALUES (${offer.spaceId}, ${offer.date}::date, ${JSON.stringify(offer.slots)}::jsonb)
+            `;
+          }
         } else {
           await tx`
           UPDATE public.bookings SET notes = ${(data.note ?? "").replace(/[<>]/g, "")}, updated_at = ${now}::timestamptz

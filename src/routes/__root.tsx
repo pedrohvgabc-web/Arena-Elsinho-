@@ -13,6 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { Header, Footer } from "@/components/SiteChrome";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
+import { ReleasedSlotsNotice } from "@/components/ReleasedSlotsNotice";
 import { SITE } from "@/lib/site";
 
 import appCss from "../styles.css?url";
@@ -126,6 +127,7 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hasZipLayout = ["/", "/reservar", "/torneio", "/admin"].includes(pathname);
+  const showReleasedSlotsNotice = pathname !== "/admin" && !pathname.startsWith("/api/");
   return (
     <QueryClientProvider client={queryClient}>
       <a href="#conteudo" className="skip">
@@ -144,6 +146,7 @@ function RootComponent() {
         </>
       )}
       <Toaster />
+      {showReleasedSlotsNotice && <ReleasedSlotsNotice />}
     </QueryClientProvider>
   );
 }

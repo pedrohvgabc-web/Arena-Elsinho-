@@ -42,7 +42,9 @@ Integrar a nova versão enviada em `arena-leste-projeto.zip` ao site já operaci
 - Reimplementar o agendamento como wizard de quatro etapas (unidade/quadra, dia, horário, dados e pagamento), mantendo seleção entre as quatro quadras disponíveis em cada unidade, observações opcionais, horários/preços do Neon, validação final no servidor, idempotência, conflito transacional, Pix demonstrativo e confirmação no próprio site.
 - Organizar o painel autenticado em módulos React. Reutilizar as APIs existentes para reservas atuais, quadras, grade semanal, torneio e histórico; acrescentar cópia autenticada da grade semanal entre unidades e exportação JSON de backup somente para admin. Manter contatos e dados do evento que são fonte oficial como leitura; preço, estado/nome/duração das quadras e janelas semanais editáveis no admin.
 - O protótipo local do ZIP permite `localStorage`, importação livre, apagar todos os registros e restaurar dados de exemplo. Não copiar esses controles destrutivos para produção: importar ou zerar reservas reais pode prejudicar clientes. O módulo de backup no site real será exportação; cancelamentos individuais/de grupo continuam disponíveis com confirmação.
-- Sem migração de banco nesta adaptação: usar `0003_arena_units_and_hours.sql`, as oito quadras já criadas e a tabela `tournament_registrations` existentes. Novas funções de exportação/cópia passam por `requireAdmin()`, SQL parametrizado e auditoria; dados pessoais continuam restritos ao painel autenticado.
+- A migração aditiva `0008_cancelled_slot_offers.sql` cria ofertas temporárias para horários cancelados: apenas unidade/quadra/data/faixas de horário e timestamps, sem nome, telefone, CPF, endereço ou código do cliente. A oferta expira em 12 horas, deixa de aparecer se algum horário for ocupado e é reivindicada na mesma transação que grava a nova reserva. A leitura pública retorna somente esses campos não pessoais; cancelamento e gravação são validados no servidor.
+- O cancelamento administrativo calcula no servidor se o primeiro horário começa em até 24 horas; sem confirmação explícita, a operação é recusada. Para quadras reais, cancelar e gravar a oferta acontecem na mesma transação; reservas legadas sem unidade não geram oferta pública.
+- Novas funções de exportação/cópia passam por `requireAdmin()`, SQL parametrizado e auditoria; dados pessoais continuam restritos ao painel autenticado.
 
 ## Reservas e regras
 
@@ -70,9 +72,11 @@ Integrar a nova versão enviada em `arena-leste-projeto.zip` ao site já operaci
 - `src/components/TournamentRegistrationsAdmin.tsx`: listagem autenticada e atualização de status das pré-inscrições.
 - `src/components/LazyLoopVideo.tsx`: poster imediato e reprodução adiada dos vídeos de hero e campanha.
 - `src/components/TournamentCountdown.tsx`: countdown compartilhado entre a home e a página do evento, com data ISO centralizada.
+- `src/components/ReleasedSlotsNotice.tsx`: aviso flutuante em páginas públicas; diálogo detalha somente unidade, quadra, data e horários e leva ao formulário pré-preenchido.
 - `src/lib/arena.functions.ts`: server functions de disponibilidade, gravação, admin, cópia de grade e backup exportável.
 - `src/lib/arena-rules.ts`: fuso, slots e validações compartilhadas.
 - `src/lib/site.ts`: identidade, unidades, canais e conteúdo oficial da campanha.
 - `public/videos/` e `public/images/`: versões tratadas dos assets enviados, sem introduzir contatos desatualizados.
-- `drizzle/migrations/0003_arena_units_and_hours.sql`: catálogo de quadras/grade já aplicado; nenhuma nova migração planejada.
+- `drizzle/migrations/0003_arena_units_and_hours.sql`: catálogo de quadras/grade já aplicado.
+- `drizzle/migrations/0008_cancelled_slot_offers.sql`: armazenamento aditivo de ofertas; requer aplicação no Neon antes de ativar a função.
 - `src/styles.css`, `vite.config.ts` e `vite.static.config.ts`: tokens, estilos e builds atuais dos serviços Render.

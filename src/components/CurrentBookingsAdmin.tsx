@@ -1,7 +1,8 @@
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -47,6 +48,7 @@ type BookingRow = {
   created_at: string;
   space_name: string;
   unit_id: UnitId;
+  cancellation_deadline_passed?: boolean;
 };
 type BookingGroup = {
   id: string;
@@ -64,6 +66,7 @@ type BookingGroup = {
   expectedBalanceDueCents: number;
   balanceDueCents: number;
   receivedAmountCents: number;
+  cancellationDeadlinePassed: boolean;
   slots: Array<{ start: string; end: string }>;
 };
 
@@ -165,6 +168,7 @@ function groupBookings(rows: BookingRow[]): BookingGroup[] {
         expectedBalanceDueCents,
         balanceDueCents,
         receivedAmountCents,
+        cancellationDeadlinePassed: items.some((row) => row.cancellation_deadline_passed),
         slots: items.map((row) => ({ start: row.start_time, end: row.end_time })),
       };
     })
@@ -186,6 +190,8 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => arenaNow().date);
   const [working, setWorking] = useState<string | null>(null);
+  const [lateCancelBooking, setLateCancelBooking] = useState<BookingGroup | null>(null);
+  const lateCancelDialogRef = useRef<HTMLDialogElement>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all");
   const rangeStart = arenaNow().date;
@@ -206,6 +212,12 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
     () => groupBookings((query.data?.bookings ?? []) as BookingRow[]),
     [query.data?.bookings],
   );
+  useEffect(() => {
+    const dialog = lateCancelDialogRef.current;
+    if (!dialog) return;
+    if (lateCancelBooking && !dialog.open) dialog.showModal();
+    if (!lateCancelBooking && dialog.open) dialog.close();
+  }, [lateCancelBooking]);
   const attentionRequired = groups.filter(
     (booking) => booking.status === "pending" || booking.paymentNeedsReview,
   ).length;
@@ -232,6 +244,7 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
   async function act(
     booking: BookingGroup,
     action: "mark_paid" | "cancel" | "confirm_received_payment",
+    lateCancelConfirmed = false,
   ) {
     const question =
       action === "mark_paid"
@@ -239,11 +252,22 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
         : action === "confirm_received_payment"
           ? "A InfinitePay confirmou o pagamento. Verifique na InfinitePay se a cobrança não foi estornada e confira se os horários seguem livres; confirmar bloqueará novamente as quadras. Continuar?"
           : "Cancelar esta reserva e liberar todos os horários do grupo? Esta ação não estorna pagamentos; faça eventual estorno diretamente na InfinitePay.";
-    if (!window.confirm(question)) return;
+    if (action === "cancel" && booking.cancellationDeadlinePassed) {
+      if (!lateCancelConfirmed) {
+        setLateCancelBooking(booking);
+        return;
+      }
+    } else if (!window.confirm(question)) return;
     setWorking(booking.code);
     try {
-      const result = await updateBooking({ data: { id: booking.id, action } });
+      const result = await updateBooking({
+        data: { id: booking.id, action, confirmLateCancel: lateCancelConfirmed },
+      });
       if (!result.ok) {
+        if ("requiresLateCancelConfirmation" in result && result.requiresLateCancelConfirmation) {
+          setLateCancelBooking(booking);
+          return;
+        }
         toast.error(result.error);
         return;
       }
@@ -256,6 +280,9 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
       );
       await queryClient.invalidateQueries({ queryKey: ["admin-current-day"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-current-bookings"] });
+      if (action === "cancel") {
+        await queryClient.invalidateQueries({ queryKey: ["public-released-slot-offers"] });
+      }
     } catch {
       toast.error("Não foi possível atualizar esta reserva.");
     } finally {
@@ -549,6 +576,62 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
           </>
         )}
       </div>
+      <dialog
+        ref={lateCancelDialogRef}
+        aria-labelledby="late-cancel-title"
+        aria-describedby="late-cancel-description"
+        onCancel={(event) => {
+          event.preventDefault();
+          setLateCancelBooking(null);
+        }}
+        onClose={() => setLateCancelBooking(null)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setLateCancelBooking(null);
+        }}
+        className="m-auto w-[min(92vw,32rem)] rounded-2xl border border-orange-500/30 bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm"
+      >
+        <div className="p-5 sm:p-7">
+          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-orange-700">
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" /> Prazo de cancelamento
+          </p>
+          <h2 id="late-cancel-title" className="mt-3 font-display text-2xl font-bold">
+            Confirmar cancelamento?
+          </h2>
+          <p
+            id="late-cancel-description"
+            className="mt-3 text-sm leading-relaxed text-muted-foreground"
+          >
+            Esta reserva já passou do prazo permitido para cancelamento. Deseja mesmo cancelar?
+          </p>
+          {lateCancelBooking && (
+            <p className="mt-3 rounded-xl border border-border bg-muted/40 p-3 text-sm">
+              {lateCancelBooking.spaceName} · {formatBookingDate(lateCancelBooking.date)} ·{" "}
+              {formatSlotRanges(lateCancelBooking.slots)}
+            </p>
+          )}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="min-h-11 rounded-full border border-border px-5 text-sm font-semibold hover:bg-muted"
+              onClick={() => setLateCancelBooking(null)}
+            >
+              Não, voltar
+            </button>
+            <button
+              type="button"
+              className="min-h-11 rounded-full bg-destructive px-5 text-sm font-bold text-destructive-foreground hover:opacity-90"
+              disabled={working === lateCancelBooking?.code}
+              onClick={() => {
+                const target = lateCancelBooking;
+                setLateCancelBooking(null);
+                if (target) void act(target, "cancel", true);
+              }}
+            >
+              {working === lateCancelBooking?.code ? "Cancelando…" : "Sim, cancelar"}
+            </button>
+          </div>
+        </div>
+      </dialog>
     </section>
   );
 }

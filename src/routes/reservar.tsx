@@ -7,6 +7,7 @@ import { SITE, waLink } from "@/lib/site";
 import {
   createBooking,
   getPublicPaymentConfig,
+  getPublicReleasedSlotOffers,
   getAvailability,
   getPublicBookingDates,
   getSpaces,
@@ -109,9 +110,20 @@ function formatSlot(slot: { start: string; end: string }) {
 }
 
 export const Route = createFileRoute("/reservar")({
-  loader: async () => await getSpaces(),
+  loaderDeps: ({ search }) => ({ offerId: search.offer }),
+  loader: async ({ deps }) => {
+    const spaces = await getSpaces();
+    const releasedOffer = deps.offerId
+      ? ((await getPublicReleasedSlotOffers()).find((offer) => offer.id === deps.offerId) ?? null)
+      : null;
+    return { spaces, releasedOffer };
+  },
   validateSearch: (search: Record<string, unknown>) => ({
     unit: UNIT_IDS.includes(search["unit"] as UnitId) ? (search["unit"] as UnitId) : undefined,
+    ...(typeof search["offer"] === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search["offer"])
+      ? { offer: search["offer"] }
+      : {}),
   }),
   head: () => ({
     meta: [
@@ -138,17 +150,20 @@ export const Route = createFileRoute("/reservar")({
 
 function Reservar() {
   const search = Route.useSearch();
+  const { spaces: initialSpaces, releasedOffer } = Route.useLoaderData();
   const fetchSpaces = useServerFn(getSpaces);
   const fetchPaymentConfig = useServerFn(getPublicPaymentConfig);
   const fetchDates = useServerFn(getPublicBookingDates);
   const fetchAvailability = useServerFn(getAvailability);
   const submitBooking = useServerFn(createBooking);
   const queryClient = useQueryClient();
-  const initialSpaces = Route.useLoaderData();
-  const [unitId, setUnitId] = useState<UnitId>(search.unit ?? "unidade-1");
-  const [spaceId, setSpaceId] = useState<string | null>(null);
-  const [date, setDate] = useState<string | null>(null);
-  const [starts, setStarts] = useState<string[]>([]);
+  const [unitId, setUnitId] = useState<UnitId>(releasedOffer?.unitId ?? search.unit ?? "unidade-1");
+  const [spaceId, setSpaceId] = useState<string | null>(releasedOffer?.spaceId ?? null);
+  const [date, setDate] = useState<string | null>(releasedOffer?.date ?? null);
+  const [starts, setStarts] = useState<string[]>(
+    () => releasedOffer?.slots.map((slot) => slot.start) ?? [],
+  );
+  const [releasedOfferId, setReleasedOfferId] = useState<string | null>(releasedOffer?.id ?? null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [idempotencyKey, setIdempotencyKey] = useState(() => globalThis.crypto.randomUUID());
   const [busy, setBusy] = useState(false);
@@ -167,8 +182,10 @@ function Reservar() {
   const promoReturnFocusRef = useRef<HTMLHeadingElement>(null);
   const cancellationDialogRef = useRef<HTMLDialogElement>(null);
   const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
-  const [bookingStep, setBookingStep] = useState(1);
-  const [visibleMonth, setVisibleMonth] = useState(() => arenaNow().date.slice(0, 7));
+  const [bookingStep, setBookingStep] = useState(releasedOffer ? 3 : 1);
+  const [visibleMonth, setVisibleMonth] = useState(
+    () => releasedOffer?.date.slice(0, 7) ?? arenaNow().date.slice(0, 7),
+  );
 
   useEffect(() => {
     try {
@@ -270,6 +287,7 @@ function Reservar() {
     (slot) => starts.includes(slot.start) && slot.status === "available",
   );
   useEffect(() => {
+    if (availabilityQuery.isLoading || availabilityQuery.isFetching) return;
     const available = new Set(
       slots.filter((slot) => slot.status === "available").map((slot) => slot.start),
     );
@@ -277,7 +295,7 @@ function Reservar() {
       const next = current.filter((value) => available.has(value));
       return next.length === current.length ? current : next;
     });
-  }, [slots]);
+  }, [availabilityQuery.isFetching, availabilityQuery.isLoading, slots]);
   useEffect(() => {
     if (paymentMode === "unavailable" && paymentMethod === "pix") {
       setPaymentMethod("card_onsite");
@@ -312,6 +330,14 @@ function Reservar() {
   const totalCents = pricing?.totalCents ?? 0;
   const chargeCents = initialPaymentCents(totalCents, paymentPlan);
   const balanceDueCents = Math.max(0, totalCents - chargeCents);
+  const releasedOfferUnavailable =
+    Boolean(search.offer && !releasedOffer) ||
+    Boolean(
+      releasedOfferId &&
+      !availabilityQuery.isLoading &&
+      !availabilityQuery.isFetching &&
+      selectedSlots.length !== starts.length,
+    );
 
   function resetIdempotency() {
     setIdempotencyKey(globalThis.crypto.randomUUID());
@@ -463,6 +489,7 @@ function Reservar() {
           notes: draft.notes,
           method: paymentMethod,
           paymentPlan: selectedPlan,
+          releasedOfferId: releasedOfferId ?? undefined,
           idempotencyKey,
         },
       });
@@ -473,9 +500,11 @@ function Reservar() {
           setPaymentPlanLocked(true);
         }
         await queryClient.invalidateQueries({ queryKey: ["booking-availability", spaceId, date] });
+        await queryClient.invalidateQueries({ queryKey: ["public-released-slot-offers"] });
         return;
       }
       const createdBooking = result.booking as BookingResult;
+      await queryClient.invalidateQueries({ queryKey: ["public-released-slot-offers"] });
       setBooking(createdBooking);
       setPaymentDialogOpen(false);
       if (createdBooking.checkoutUrl) window.location.assign(createdBooking.checkoutUrl);
@@ -489,8 +518,10 @@ function Reservar() {
   function startNewBooking() {
     setBooking(null);
     setUnitId(search.unit ?? "unidade-1");
+    setSpaceId(null);
     setDate(null);
     setStarts([]);
+    setReleasedOfferId(null);
     setIdempotencyKey(globalThis.crypto.randomUUID());
     setPaymentPlan("full");
     setPaymentPlanLocked(false);
@@ -528,6 +559,32 @@ function Reservar() {
           <b>sua quadra</b>
         </h1>
 
+        {releasedOfferUnavailable ? (
+          <div
+            className="mb-5 rounded-2xl border border-orange-500/40 bg-orange-500/10 p-4 text-sm"
+            role="alert"
+          >
+            <strong>Este horário acabou de ser reservado ou a oferta expirou.</strong>
+            <p className="mt-1">Escolha outro horário que ainda esteja livre.</p>
+            <Link
+              to="/reservar"
+              search={{ unit: releasedOffer?.unitId ?? search.unit ?? "unidade-1" }}
+              className="mt-3 inline-flex min-h-10 items-center rounded-full bg-primary px-4 font-bold text-primary-foreground"
+            >
+              Ver horários disponíveis
+            </Link>
+          </div>
+        ) : releasedOfferId && releasedOffer ? (
+          <div className="mb-5 rounded-2xl border border-orange-500/40 bg-orange-500/10 p-4 text-sm">
+            <strong>Horário liberado pré-selecionado</strong>
+            <p className="mt-1">
+              {releasedOffer.spaceName} · {dateLabel(releasedOffer.date)} ·{" "}
+              {releasedOffer.slots.map(formatSlot).join(", ")}. Confira os dados e conclua sua
+              reserva.
+            </p>
+          </div>
+        ) : null}
+
         {!booking && promoReady && !promoDismissed && (
           <button
             ref={promoTriggerRef}
@@ -551,7 +608,12 @@ function Reservar() {
         ) : (
           <form className="rv" onSubmit={finishBooking}>
             <div className="booking-flow">
-              <fieldset data-booking-step="1" data-active={bookingStep === 1} tabIndex={-1}>
+              <fieldset
+                data-booking-step="1"
+                data-active={bookingStep === 1}
+                tabIndex={-1}
+                disabled={Boolean(releasedOfferId)}
+              >
                 <legend className="mono">1 · Unidade e quadra</legend>
                 <div className="opts">
                   {SITE.units.map((option, index) => (
@@ -609,7 +671,7 @@ function Reservar() {
                 data-active={bookingStep === 2}
                 tabIndex={-1}
                 className={!selectedSpace ? "lk" : ""}
-                disabled={!selectedSpace}
+                disabled={!selectedSpace || Boolean(releasedOfferId)}
               >
                 <legend className="mono">2 · Data e horários</legend>
                 {datesQuery.isLoading ? (
@@ -684,7 +746,7 @@ function Reservar() {
                 data-active={bookingStep === 2}
                 tabIndex={-1}
                 className={!date ? "lk" : ""}
-                disabled={!date}
+                disabled={!date || Boolean(releasedOfferId)}
               >
                 <legend className="mono">
                   Horários · até {maxSelectableSlots} blocos (16h máx.)
@@ -708,7 +770,7 @@ function Reservar() {
                           key={slot.start}
                           type="button"
                           className="opt"
-                          disabled={!available}
+                          disabled={!available || Boolean(releasedOfferId)}
                           aria-pressed={starts.includes(slot.start) && available}
                           onClick={() => chooseTime(slot.start)}
                         >
@@ -881,7 +943,7 @@ function Reservar() {
                 <strong>{formatBRL(totalCents)}</strong>
               </p>
               <div className="booking-mobile-controls__actions">
-                {bookingStep > 1 && (
+                {bookingStep > 1 && !releasedOfferId && (
                   <button
                     type="button"
                     className="btn"
@@ -907,6 +969,8 @@ function Reservar() {
                     type="submit"
                     className="btn pri lg"
                     disabled={
+                      releasedOfferUnavailable ||
+                      !selectedSlots.length ||
                       busy ||
                       (paymentMethod === "pix" &&
                         paymentMode !== "demo" &&
@@ -958,6 +1022,7 @@ function Reservar() {
                 type="submit"
                 disabled={
                   !selectedSlots.length ||
+                  releasedOfferUnavailable ||
                   busy ||
                   (paymentMethod === "pix" &&
                     paymentMode !== "demo" &&

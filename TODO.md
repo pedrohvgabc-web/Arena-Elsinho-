@@ -83,3 +83,10 @@
 - [x] **Mostrar os horários junto da escolha do dia no celular** — depois de selecionar unidade e quadra, abrir uma etapa que permite escolher o dia e logo abaixo ver/selecionar os horários daquele dia, sem uma etapa intermediária que pareça vazia; manter datas e escolhas anteriores ao avançar/voltar.
 - [x] **Exibir a promoção sobre as outras camadas e apenas uma vez** — dar ao botão flutuante prioridade visual no conteúdo da reserva; após abrir e fechar o aviso por OK, X, Escape ou backdrop, dispensar o botão para o usuário; usar texto curto e direto.
 - [x] **Publicar as quadras da Unidade 2** — ativar as quatro quadras existentes de 60 minutos a R$60/h, sem alterar a grade semanal; reservas acima de uma hora seguem a promoção já implementada de R$50/h.
+
+## Vagas liberadas por cancelamento
+
+- [x] **Confirmar cancelamento após a antecedência mínima** — calcular no servidor se o primeiro horário do grupo está a até 24 horas do início. Nesse caso, impedir o cancelamento até o admin escolher explicitamente “Sim, cancelar”; “Não, voltar” fecha o diálogo sem alterar a reserva.
+- [x] **Criar aviso público de horário liberado** — ao cancelar um grupo de reserva das unidades reais, registrar unidade, quadra, data e todos os horários liberados sem expor nome, telefone, CPF, endereço ou código da reserva; exibir um balão flutuante em páginas públicas com a mensagem “Este horário está disponível para reserva. Venha aproveitar!”.
+- [x] **Expirar e reivindicar ofertas com segurança** — esconder a oferta após 12 horas; ocultá-la também se qualquer faixa for ocupada por outra reserva; linkar para o formulário com unidade/quadra/data/faixas pré-selecionadas. Só marcar como aceita e removê-la globalmente quando a criação da nova reserva tiver sucesso, na mesma transação que grava os horários. Não publicar reservas legadas sem unidade.
+- [ ] **Migrar e validar produção** — aplicar a migration aditiva da tabela de ofertas no Neon antes de liberar as novas rotas, validar consultas e reserva concorrente, então implantar pelo fluxo já autorizado do repositório/Render.
