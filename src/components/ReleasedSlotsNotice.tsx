@@ -34,9 +34,7 @@ function formatTimes(slots: Offer["slots"]) {
     if (previous && previous[1] === start) previous[1] = end;
     else ranges.push([start, end]);
   }
-  return ranges
-    .map(([start, end]) => `${start}–${end === "24:00" ? "00:00 (+1 dia)" : end}`)
-    .join(" · ");
+  return ranges.map(([start, end]) => `${start}–${end === "24:00" ? "00:00" : end}`).join(" · ");
 }
 
 export function ReleasedSlotsNotice() {

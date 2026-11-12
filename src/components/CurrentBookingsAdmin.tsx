@@ -93,9 +93,7 @@ function formatSlotRanges(slots: Array<{ start: string; end: string }>) {
     if (previous && previous[1] === start) previous[1] = end;
     else ranges.push([start, end]);
   }
-  return ranges
-    .map(([start, end]) => `${start} – ${end === "24:00" ? "00:00 (+1 dia)" : end}`)
-    .join(" · ");
+  return ranges.map(([start, end]) => `${start} – ${end === "24:00" ? "00:00" : end}`).join(" · ");
 }
 
 function groupBookings(rows: BookingRow[]): BookingGroup[] {
@@ -271,13 +269,17 @@ export function CurrentBookingsAdmin({ view = "agenda" }: { view?: "agenda" | "r
         toast.error(result.error);
         return;
       }
-      toast.success(
-        action === "mark_paid"
-          ? "Reserva confirmada."
-          : action === "confirm_received_payment"
-            ? "Reserva confirmada após revisão do pagamento."
-            : "Reserva cancelada.",
-      );
+      if (action === "cancel" && "noticeCreated" in result && result.noticeCreated === false) {
+        toast.warning("Reserva cancelada, mas o aviso público da vaga não foi criado.");
+      } else {
+        toast.success(
+          action === "mark_paid"
+            ? "Reserva confirmada."
+            : action === "confirm_received_payment"
+              ? "Reserva confirmada após revisão do pagamento."
+              : "Reserva cancelada.",
+        );
+      }
       await queryClient.invalidateQueries({ queryKey: ["admin-current-day"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-current-bookings"] });
       if (action === "cancel") {

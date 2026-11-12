@@ -1654,6 +1654,7 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
     await requireAdmin();
     const db = await database();
     const now = new Date().toISOString();
+    let releasedOffers: Array<{ spaceId: string; date: string; slots: ReleasedSlot[] }> = [];
     try {
       const result = await db.begin(async (tx) => {
         const bookings = (await tx`
@@ -1821,12 +1822,7 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
             offer.slots.push({ start: row.start_time, end: row.end_time });
             offers.set(key, offer);
           }
-          for (const offer of offers.values()) {
-            await tx`
-              INSERT INTO public.released_slot_offers (space_id, booking_date, slots)
-              VALUES (${offer.spaceId}, ${offer.date}::date, ${JSON.stringify(offer.slots)}::jsonb)
-            `;
-          }
+          releasedOffers = [...offers.values()];
         } else {
           await tx`
           UPDATE public.bookings SET notes = ${(data.note ?? "").replace(/[<>]/g, "")}, updated_at = ${now}::timestamptz
@@ -1839,13 +1835,45 @@ export const adminUpdateBooking = createServerFn({ method: "POST" })
       `;
         return { ok: true, error: null };
       });
-      return result;
+      if (!result.ok || data.action !== "cancel" || !releasedOffers.length) return result;
+
+      let noticeCreated = true;
+      try {
+        await db.begin(async (tx) => {
+          for (const offer of releasedOffers) {
+            await tx`
+              INSERT INTO public.released_slot_offers (space_id, booking_date, slots)
+              VALUES (${offer.spaceId}, ${offer.date}::date, ${JSON.stringify(offer.slots)}::jsonb)
+            `;
+          }
+        });
+      } catch (error) {
+        noticeCreated = false;
+        console.error(
+          "released slot notice insert failed",
+          errorCode(error) ?? "unknown",
+          errorConstraint(error) ?? "constraint_unknown",
+        );
+      }
+      return { ...result, noticeCreated };
     } catch (error) {
       if (data.action === "confirm_received_payment" && errorCode(error) === "23P01") {
         return {
           ok: false,
           error:
             "O horário foi ocupado durante a revisão. Não foi possível confirmar; contate o cliente e trate eventual estorno diretamente na InfinitePay.",
+        };
+      }
+      if (data.action === "cancel") {
+        console.error(
+          "admin booking cancellation failed",
+          errorCode(error) ?? "unknown",
+          errorConstraint(error) ?? "constraint_unknown",
+        );
+        return {
+          ok: false,
+          error:
+            "Não foi possível cancelar a reserva. Nenhuma alteração foi aplicada. Tente novamente.",
         };
       }
       throw error;

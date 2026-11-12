@@ -106,7 +106,7 @@ function shiftMonth(monthISO: string, change: number) {
 }
 function formatSlot(slot: { start: string; end: string }) {
   const end = slot.end.slice(0, 5);
-  return `${slot.start.slice(0, 5)} – ${end === "24:00" ? "00:00 (+1 dia)" : end}`;
+  return `${slot.start.slice(0, 5)} – ${end === "24:00" ? "00:00" : end}`;
 }
 
 export const Route = createFileRoute("/reservar")({
