@@ -191,7 +191,8 @@ async function audit(
 
 /* ---------------- Público ---------------- */
 
-const SPACE_CACHE_TTL_MS = 30_000;
+// Admin updates clear this process cache; keep TTL short as a fallback across Render instances.
+const SPACE_CACHE_TTL_MS = 5_000;
 let spacesCache: { rows: SpaceRow[]; expiresAt: number } | undefined;
 let spacesPending: Promise<SpaceRow[]> | undefined;
 

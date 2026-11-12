@@ -136,8 +136,18 @@ export function ArenaSettingsAdmin({
         toast.error(result.error);
         return;
       }
-      toast.success(`${draft.name} atualizada.`);
-      await queryClient.invalidateQueries({ queryKey: ["admin-day"] });
+      toast.success(
+        draft.active
+          ? `${draft.name} salva e liberada para aparecer na reserva pública.`
+          : `${draft.name} salva e ficará oculta da reserva pública.`,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-arena-settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-day"] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-spaces"] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-dates", selectedUnit] }),
+        queryClient.invalidateQueries({ queryKey: ["booking-availability"] }),
+      ]);
     } catch {
       toast.error("Não foi possível salvar a quadra.");
     } finally {
@@ -262,8 +272,8 @@ export function ArenaSettingsAdmin({
               {tab === "courts" ? "Unidades e quadras" : "Horários de funcionamento"}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Configure os valores e a grade real de cada unidade antes de liberar a reserva online.
-              Quadras sem preço salvo não aparecem para o público.
+              Para a quadra aparecer na reserva, configure o preço, marque “Ativa para reserva” e
+              clique em “Salvar e liberar na reserva”. Quadras inativas ou sem preço ficam ocultas.
             </p>
           </div>
           <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-bold text-primary">
@@ -368,6 +378,15 @@ export function ArenaSettingsAdmin({
                         <p className="mt-1 text-sm text-muted-foreground">
                           {space.sport} · {draft.slotMinutes} min
                         </p>
+                        <p
+                          className={`mt-1 text-xs font-semibold ${space.active && (space.priceCents ?? 0) > 0 ? "text-emerald-600" : draft.active && centsFromText(draft.priceText) !== null ? "text-primary" : "text-muted-foreground"}`}
+                        >
+                          {space.active && (space.priceCents ?? 0) > 0
+                            ? "Ativa e visível na reserva"
+                            : draft.active && centsFromText(draft.priceText) !== null
+                              ? "Pronta para liberar — salve as alterações"
+                              : "Oculta da reserva: requer ativação e preço"}
+                        </p>
                       </div>
                       <label className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold">
                         <input
@@ -434,7 +453,9 @@ export function ArenaSettingsAdmin({
                       ) : (
                         <Save className="h-4 w-4" />
                       )}
-                      Salvar quadra
+                      {draft.active && centsFromText(draft.priceText) !== null
+                        ? "Salvar e liberar na reserva"
+                        : "Salvar quadra"}
                     </button>
                   </article>
                 );

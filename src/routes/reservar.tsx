@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Check, Copy, LoaderCircle, MessageCircle, ShieldCheck, Ticket } from "lucide-react";
+import { Check, Copy, LoaderCircle, MessageCircle, ShieldCheck, Ticket, X } from "lucide-react";
 import { SITE, waLink } from "@/lib/site";
 import {
   createBooking,
@@ -67,6 +67,7 @@ type BookingResult = {
 type BookingDraft = { name: string; phone: string; cpf: string; address: string; notes: string };
 
 const UNIT_IDS: UnitId[] = ["unidade-1", "unidade-2"];
+const PROMO_DISMISSED_KEY = "arena-leste-promo-dismissed-v1";
 const METHODS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "pix", label: "Pix demonstrativo · sem cobrança real" },
   { value: "card_onsite", label: "Cartão no local" },
@@ -159,12 +160,24 @@ function Reservar() {
   const [pendingDraft, setPendingDraft] = useState<BookingDraft | null>(null);
   const paymentDialogRef = useRef<HTMLDialogElement>(null);
   const [promoDialogOpen, setPromoDialogOpen] = useState(false);
+  const [promoReady, setPromoReady] = useState(false);
+  const [promoDismissed, setPromoDismissed] = useState(false);
   const promoDialogRef = useRef<HTMLDialogElement>(null);
   const promoTriggerRef = useRef<HTMLButtonElement>(null);
+  const promoReturnFocusRef = useRef<HTMLHeadingElement>(null);
   const cancellationDialogRef = useRef<HTMLDialogElement>(null);
   const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
   const [bookingStep, setBookingStep] = useState(1);
   const [visibleMonth, setVisibleMonth] = useState(() => arenaNow().date.slice(0, 7));
+
+  useEffect(() => {
+    try {
+      setPromoDismissed(window.localStorage.getItem(PROMO_DISMISSED_KEY) === "1");
+    } catch {
+      setPromoDismissed(false);
+    }
+    setPromoReady(true);
+  }, []);
 
   const paymentConfigQuery = useQuery({
     queryKey: ["public-payment-config"],
@@ -212,7 +225,7 @@ function Reservar() {
     queryKey: ["booking-spaces"],
     queryFn: () => fetchSpaces(),
     initialData: initialSpaces,
-    staleTime: 30_000,
+    staleTime: 5_000,
   });
   const spaces = useMemo(() => (spacesQuery.data ?? []) as Space[], [spacesQuery.data]);
   const unitSpaces = useMemo(
@@ -361,14 +374,31 @@ function Reservar() {
       return;
     }
     if (bookingStep === 2 && !date) {
-      setError("Escolha um dia aberto para continuar.");
+      setError("Escolha um dia aberto para carregar os horários.");
       return;
     }
-    if (bookingStep === 3 && !selectedSlots.length) {
+    if (bookingStep === 2 && !selectedSlots.length) {
       setError("Escolha pelo menos um horário livre para continuar.");
       return;
     }
-    goToBookingStep(Math.min(4, bookingStep + 1));
+    goToBookingStep(Math.min(3, bookingStep + 1));
+  }
+
+  function closePromo() {
+    const dialog = promoDialogRef.current;
+    if (dialog?.open) dialog.close();
+    else dismissPromo();
+  }
+
+  function dismissPromo() {
+    setPromoDialogOpen(false);
+    setPromoDismissed(true);
+    try {
+      window.localStorage.setItem(PROMO_DISMISSED_KEY, "1");
+    } catch {
+      // The CTA still disappears for this mounted page if storage is unavailable.
+    }
+    requestAnimationFrame(() => promoReturnFocusRef.current?.focus({ preventScroll: true }));
   }
 
   function continueAfterCancellationNotice() {
@@ -491,13 +521,13 @@ function Reservar() {
       </header>
       <main id="conteudo" className="wrap rb">
         <span className="mono">Arena Leste · Reservar</span>
-        <h1 className="rt">
+        <h1 ref={promoReturnFocusRef} className="rt" tabIndex={-1}>
           Reserve
           <br />
           <b>sua quadra</b>
         </h1>
 
-        {!booking && (
+        {!booking && promoReady && !promoDismissed && (
           <button
             ref={promoTriggerRef}
             type="button"
@@ -566,8 +596,8 @@ function Reservar() {
                     </div>
                   ) : (
                     <p className="hint" role="status">
-                      As quadras desta unidade serão liberadas após a equipe cadastrar preço e
-                      horários reais no painel.
+                      Esta unidade ainda não tem quadras ativas com preço. No Admin, marque “Ativa
+                      para reserva” e toque em “Salvar e liberar na reserva”.
                     </p>
                   )}
                 </div>
@@ -580,7 +610,7 @@ function Reservar() {
                 className={!selectedSpace ? "lk" : ""}
                 disabled={!selectedSpace}
               >
-                <legend className="mono">2 · Dia</legend>
+                <legend className="mono">2 · Data e horários</legend>
                 {datesQuery.isLoading ? (
                   <p className="hint">
                     <LoaderCircle size={16} className="loading-icon" /> Consultando dias abertos…
@@ -649,14 +679,14 @@ function Reservar() {
               </fieldset>
 
               <fieldset
-                data-booking-step="3"
-                data-active={bookingStep === 3}
+                data-booking-step="2"
+                data-active={bookingStep === 2}
                 tabIndex={-1}
                 className={!date ? "lk" : ""}
                 disabled={!date}
               >
                 <legend className="mono">
-                  3 · Horários · até {maxSelectableSlots} blocos (máximo de 16 horas)
+                  Horários · até {maxSelectableSlots} blocos (16h máx.)
                 </legend>
                 {availabilityQuery.isLoading ? (
                   <p className="hint">
@@ -666,6 +696,8 @@ function Reservar() {
                   <p className="hint" role="alert">
                     Não foi possível consultar este horário.
                   </p>
+                ) : !date ? (
+                  <p className="hint">Escolha um dia aberto acima para carregar os horários.</p>
                 ) : slots.length ? (
                   <div className="opts">
                     {slots.map((slot) => {
@@ -699,8 +731,8 @@ function Reservar() {
               </fieldset>
 
               <fieldset
-                data-booking-step="4"
-                data-active={bookingStep === 4}
+                data-booking-step="3"
+                data-active={bookingStep === 3}
                 tabIndex={-1}
                 className={!selectedSlots.length ? "lk" : ""}
                 disabled={!selectedSlots.length}
@@ -830,9 +862,9 @@ function Reservar() {
 
             <nav className="booking-mobile-controls" aria-label="Etapas da reserva">
               <div className="booking-mobile-controls__progress">
-                <span>Etapa {bookingStep} de 4</span>
+                <span>Etapa {bookingStep} de 3</span>
                 <div aria-hidden="true">
-                  {[1, 2, 3, 4].map((step) => (
+                  {[1, 2, 3].map((step) => (
                     <i key={step} data-complete={step <= bookingStep} />
                   ))}
                 </div>
@@ -857,18 +889,17 @@ function Reservar() {
                     Voltar
                   </button>
                 )}
-                {bookingStep < 4 ? (
+                {bookingStep < 3 ? (
                   <button
                     type="button"
                     className="btn pri lg"
                     disabled={
                       (bookingStep === 1 && !selectedSpace) ||
-                      (bookingStep === 2 && !date) ||
-                      (bookingStep === 3 && !selectedSlots.length)
+                      (bookingStep === 2 && (!date || !selectedSlots.length))
                     }
                     onClick={continueBookingStep}
                   >
-                    Próximo
+                    {bookingStep === 1 ? "Escolher dia e horários" : "Continuar com meus dados"}
                   </button>
                 ) : (
                   <button
@@ -1106,35 +1137,38 @@ function Reservar() {
           aria-modal="true"
           onCancel={(event) => {
             event.preventDefault();
-            setPromoDialogOpen(false);
+            closePromo();
           }}
-          onClose={() => {
-            setPromoDialogOpen(false);
-            promoTriggerRef.current?.focus();
-          }}
+          onClose={dismissPromo}
           onClick={(event) => {
-            if (event.target === event.currentTarget) setPromoDialogOpen(false);
+            if (event.target === event.currentTarget) closePromo();
           }}
         >
+          <button
+            type="button"
+            className="booking-promo-dialog__close"
+            aria-label="Fechar promoção"
+            onClick={closePromo}
+          >
+            <X size={19} aria-hidden="true" />
+          </button>
           <span className="booking-promo-dialog__stamp" aria-hidden="true">
             {promoAvailable ? `${formatBRL(promoHourlyRateCents)} / hora` : "TARIFA DA QUADRA"}
           </span>
           <span className="mono">ARENA LESTE · VANTAGEM DESBLOQUEADA</span>
-          <h2 id="booking-promo-title">
-            {promoAvailable ? "Mais jogo. Menos gasto." : "Sua melhor tarifa"}
-          </h2>
+          <h2 id="booking-promo-title">{promoAvailable ? "PROMOÇÃO LIBERADA" : "MENOR TARIFA"}</h2>
           <p id="booking-promo-description">
             {!selectedSpace
-              ? "Escolha uma quadra: nas que têm tarifa acima de R$50/h, reservando mais de 1 hora você paga R$50/h."
+              ? "Mais de 1h? R$50/h nas quadras elegíveis. Reserve e economize."
               : promoAvailable
-                ? `Reserve mais de 1 hora e pague ${formatBRL(promoHourlyRateCents)} por hora. A economia entra automaticamente no total. Bora garantir seu horário?`
-                : `Esta quadra já está por ${formatBRL(regularHourlyRateCents)} por hora. Mantemos a tarifa configurada, sem aumentar o preço.`}
+                ? `Mais de 1h: ${formatBRL(promoHourlyRateCents)}/h. Reserve agora e economize.`
+                : `Esta quadra já custa ${formatBRL(regularHourlyRateCents)}/h. Você já paga menos.`}
           </p>
           <button
             type="button"
             className="btn pri lg booking-promo-dialog__ok"
             autoFocus
-            onClick={() => setPromoDialogOpen(false)}
+            onClick={closePromo}
           >
             OK
           </button>

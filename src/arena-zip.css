@@ -1936,7 +1936,7 @@ tr:last-child td {
 }
 .booking-promo {
   position: fixed;
-  z-index: 19;
+  z-index: 2147483000;
   inset: auto 1.25rem 1.5rem auto;
   display: grid;
   width: 7.25rem;
@@ -1988,6 +1988,25 @@ tr:last-child td {
   color: var(--tx);
   text-align: center;
   box-shadow: 0 26px 100px rgb(0 0 0 / 0.48);
+}
+.booking-promo-dialog__close {
+  position: absolute;
+  z-index: 3;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--bd);
+  border-radius: 50%;
+  background: var(--sf);
+  color: var(--tx);
+  cursor: pointer;
+}
+.booking-promo-dialog__close:focus-visible {
+  outline: 3px solid var(--ac);
+  outline-offset: 2px;
 }
 .booking-promo-dialog::before {
   position: absolute;

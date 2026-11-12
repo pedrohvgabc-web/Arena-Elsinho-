@@ -70,8 +70,15 @@
 
 ## Reserva mobile: calendário e navegação por etapas
 
-- [x] **Simplificar o fluxo em celular** — em telas móveis, mostrar uma etapa por vez (unidade/quadra, data, horários e dados); após selecionar e tocar em “Próximo”, avançar lateralmente para a próxima etapa, permitir voltar sem perder escolhas e exibir progresso e resumo compacto; preservar o formulário completo em telas maiores.
+- [x] **Simplificar o fluxo em celular** — em telas móveis, mostrar uma etapa por vez (unidade/quadra; data e horários juntos; dados do responsável); depois de escolher unidade e quadra, “Escolher dia e horários” leva ao calendário com horários logo abaixo. Escolher uma data carrega os horários no mesmo passo; depois de selecionar horários, avançar para os dados. Permitir voltar sem perder escolhas e exibir progresso e resumo compacto; preservar o formulário completo em telas maiores.
 - [x] **Ampliar a agenda pública** — permitir escolher dias abertos desde hoje até 180 dias à frente, com navegação mensal em calendário compacto; respeitar os horários semanais e exceções/feriados configurados no admin e manter a validação final no servidor, inclusive em chamadas diretas ao backend.
 - [x] **Acelerar a escolha de quadras** — pré-carregar as quadras no carregamento inicial da rota e reutilizar a resposta cacheada na consulta cliente, evitando esperar por uma busca adicional após abrir a reserva.
 - [x] **Flutuar e simplificar a promoção** — manter uma bolinha flutuante na área de reserva com somente “Aperte para liberar sua PROMOÇÃO”; ao abrir, exibir uma mensagem curta e comercial com o valor correto, animação responsiva e fechamento por OK/Escape, respeitando movimento reduzido e sem encobrir os controles.
 - [x] **Informar a regra de cancelamento antes de concluir** — depois do preenchimento, exibir que cancelamentos só podem ser solicitados até 15 horas antes do primeiro horário da reserva.
+
+## Visibilidade das quadras e fluxo de horários
+
+- [x] **Fazer a ativação do admin refletir na reserva pública** — ao marcar uma quadra como ativa e salvar preço/tempo, atualizar a configuração do admin e a lista pública de espaços; deixar claro se a quadra será exibida ou se ainda falta preço/ativação.
+- [x] **Mostrar os horários junto da escolha do dia no celular** — depois de selecionar unidade e quadra, abrir uma etapa que permite escolher o dia e logo abaixo ver/selecionar os horários daquele dia, sem uma etapa intermediária que pareça vazia; manter datas e escolhas anteriores ao avançar/voltar.
+- [x] **Exibir a promoção sobre as outras camadas e apenas uma vez** — dar ao botão flutuante prioridade visual no conteúdo da reserva; após abrir e fechar o aviso por OK, X, Escape ou backdrop, dispensar o botão para o usuário; usar texto curto e direto.
+- [ ] **Confirmar a publicação das quadras existentes da Unidade 2** — produção contém quatro quadras de 60 minutos, cada uma configurada a R$45/h, com grade semanal, mas todas estão inativas; confirmar com o responsável antes de expô-las ou alterar o preço.
