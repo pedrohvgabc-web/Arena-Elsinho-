@@ -24,6 +24,8 @@ import {
   MAX_BOOKING_MINUTES,
   MAX_SLOTS,
   MULTI_SLOT_PROMO_RATE_CENTS_PER_HOUR,
+  hasFirstAndLastName,
+  normalizeFullName,
   type PaymentMethod,
   type PaymentPlan,
 } from "@/lib/arena-rules";
@@ -443,7 +445,15 @@ function Reservar() {
   async function finishBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSpace || !date || !selectedSlots.length) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const name = normalizeFullName(String(form.get("name") ?? ""));
+    if (!hasFirstAndLastName(name)) {
+      setError("Informe seu nome e sobrenome para continuar.");
+      const nameInput = formElement.elements.namedItem("name");
+      if (nameInput instanceof HTMLInputElement) nameInput.focus();
+      return;
+    }
     const cpf = normalizeValidCpf(String(form.get("cpf") ?? ""));
     if (!cpf) {
       setError("Confira o CPF informado.");
@@ -459,7 +469,7 @@ function Reservar() {
       return;
     }
     const draft: BookingDraft = {
-      name: String(form.get("name") ?? ""),
+      name,
       phone: String(form.get("phone") ?? ""),
       cpf,
       address,
@@ -803,14 +813,17 @@ function Reservar() {
                 <legend className="mono">3 · Seus dados</legend>
                 <div className="g2 f">
                   <label>
-                    <span className="mono">Nome do responsável</span>
+                    <span className="mono">Nome e sobrenome do responsável</span>
                     <input
                       name="name"
                       required
                       minLength={3}
                       maxLength={80}
                       autoComplete="name"
-                      placeholder="Nome e sobrenome"
+                      autoCapitalize="words"
+                      pattern="\S+\s+\S+.*"
+                      title="Informe seu nome e pelo menos um sobrenome."
+                      placeholder="Ex.: Ana Silva"
                     />
                   </label>
                   <label>

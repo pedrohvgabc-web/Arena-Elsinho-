@@ -19,6 +19,15 @@ export const STATUS_LABEL: Record<PaymentStatus, string> = {
   failed: "Falhou",
 };
 
+/** Normaliza espaços para guardar um nome legível e verificar nome + sobrenome. */
+export function normalizeFullName(value: string) {
+  return value.trim().replace(/\s+/gu, " ");
+}
+
+export function hasFirstAndLastName(value: string) {
+  return normalizeFullName(value).split(" ").filter(Boolean).length >= 2;
+}
+
 export const toMin = (time: string) => {
   const [hour = 0, minute = 0] = time.split(":").map(Number);
   return hour * 60 + minute;

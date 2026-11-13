@@ -14,6 +14,7 @@ import {
   weekdayOf,
   toMin,
   validateOpeningWindows,
+  hasFirstAndLastName,
   type OpeningWindow,
   type PaymentPlan,
 } from "./arena-rules";
@@ -438,7 +439,12 @@ const bookingSchema = z.object({
     .array(z.string().regex(/^\d{2}:\d{2}$/, "Horário inválido."))
     .min(1, "Escolha ao menos um horário.")
     .max(MAX_SLOTS, `Escolha até ${MAX_SLOTS} horários.`),
-  name: z.string().trim().min(3, "Informe o nome completo.").max(80),
+  name: z
+    .string()
+    .trim()
+    .min(3, "Informe seu nome e sobrenome.")
+    .max(80)
+    .refine(hasFirstAndLastName, "Informe seu nome e sobrenome."),
   phone: z.string().max(30),
   cpf: z.string().min(11).max(14),
   address: z.string().trim().min(8, "Informe o endereço completo.").max(250),

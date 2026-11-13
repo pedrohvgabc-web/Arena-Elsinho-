@@ -14,6 +14,8 @@ import {
   calendarMonthDays,
   BOOKING_HORIZON_DAYS,
   isWithinBookingHorizon,
+  hasFirstAndLastName,
+  normalizeFullName,
   type OpeningWindow,
 } from "./arena-rules";
 
@@ -24,6 +26,15 @@ const TUESDAY: OpeningWindow[] = [
   { start: "08:00", end: "12:00" },
   { start: "14:00", end: "22:00" },
 ];
+
+describe("nome do responsável pela reserva", () => {
+  it("exige pelo menos nome e sobrenome e normaliza espaços extras", () => {
+    expect(hasFirstAndLastName("Pedro")).toBe(false);
+    expect(hasFirstAndLastName("  Pedro   Henrique  ")).toBe(true);
+    expect(hasFirstAndLastName("Ana Maria da Silva")).toBe(true);
+    expect(normalizeFullName("  Ana   Maria da Silva  ")).toBe("Ana Maria da Silva");
+  });
+});
 
 describe("regras de funcionamento configuráveis", () => {
   it("fornece calendário mensal alinhado ao domingo e janela de agenda de seis meses", () => {

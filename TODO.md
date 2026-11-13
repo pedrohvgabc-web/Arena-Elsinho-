@@ -90,3 +90,7 @@
 - [x] **Criar aviso público de horário liberado** — ao cancelar um grupo de reserva das unidades reais, registrar unidade, quadra, data e todos os horários liberados sem expor nome, telefone, CPF, endereço ou código da reserva; exibir um balão flutuante em páginas públicas com a mensagem “Este horário está disponível para reserva. Venha aproveitar!”.
 - [x] **Expirar e reivindicar ofertas com segurança** — esconder a oferta após 12 horas; ocultá-la também se qualquer faixa for ocupada por outra reserva; linkar para o formulário com unidade/quadra/data/faixas pré-selecionadas. Só marcar como aceita e removê-la globalmente quando a criação da nova reserva tiver sucesso, na mesma transação que grava os horários. Não publicar reservas legadas sem unidade.
 - [ ] **Migrar e validar produção** — aplicar a migration aditiva da tabela de ofertas no Neon antes de liberar as novas rotas, validar consultas e reserva concorrente, então implantar pelo fluxo já autorizado do repositório/Render.
+
+## Dados obrigatórios na reserva
+
+- [x] **Exigir nome e sobrenome do responsável** — não permitir concluir uma reserva com apenas um nome; mostrar orientação clara no formulário e validar novamente no servidor para proteger chamadas diretas à API.
