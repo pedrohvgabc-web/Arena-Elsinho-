@@ -29,6 +29,7 @@ import { ArenaSettingsAdmin } from "@/components/ArenaSettingsAdmin";
 import { CurrentBookingsAdmin } from "@/components/CurrentBookingsAdmin";
 import { AdminOverview } from "@/components/AdminOverview";
 import { AdminDataBackup } from "@/components/AdminDataBackup";
+import { PhotoGalleryAdmin } from "@/components/PhotoGalleryAdmin";
 import { ADMIN_MODULES, type AdminModuleId } from "@/lib/admin-navigation";
 import { SITE } from "@/lib/site";
 import {
@@ -290,6 +291,7 @@ function Dashboard() {
           {activeModule === "reservations" && <CurrentBookingsAdmin view="reservations" />}
           {activeModule === "courts" && <ArenaSettingsAdmin initialTab="courts" showTabs={false} />}
           {activeModule === "hours" && <ArenaSettingsAdmin initialTab="hours" showTabs={false} />}
+          {activeModule === "gallery" && <PhotoGalleryAdmin />}
           {activeModule === "tournament" && <TournamentRegistrationsAdmin />}
           {activeModule === "backup" && <AdminDataBackup />}
           {activeModule === "contact" && (

@@ -17,6 +17,7 @@ import { Route as ReservarRouteImport } from './routes/reservar'
 import { Route as TermosRouteImport } from './routes/termos'
 import { Route as TorneioRouteImport } from './routes/torneio'
 import { Route as PagamentoRetornoRouteImport } from './routes/pagamento.retorno'
+import { Route as ApiGalleryIdRouteImport } from './routes/api.gallery.$id'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const PagamentoRetornoRoute = PagamentoRetornoRouteImport.update({
   path: '/pagamento/retorno',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGalleryIdRoute = ApiGalleryIdRouteImport.update({
+  id: '/api/gallery/$id',
+  path: '/api/gallery/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/termos': typeof TermosRoute
   '/torneio': typeof TorneioRoute
   '/pagamento/retorno': typeof PagamentoRetornoRoute
+  '/api/gallery/$id': typeof ApiGalleryIdRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -86,6 +93,7 @@ export interface FileRoutesByTo {
   '/termos': typeof TermosRoute
   '/torneio': typeof TorneioRoute
   '/pagamento/retorno': typeof PagamentoRetornoRoute
+  '/api/gallery/$id': typeof ApiGalleryIdRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/termos': typeof TermosRoute
   '/torneio': typeof TorneioRoute
   '/pagamento/retorno': typeof PagamentoRetornoRoute
+  '/api/gallery/$id': typeof ApiGalleryIdRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/termos'
     | '/torneio'
     | '/pagamento/retorno'
+    | '/api/gallery/$id'
     | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/termos'
     | '/torneio'
     | '/pagamento/retorno'
+    | '/api/gallery/$id'
     | '/api/public/payments/webhook'
   id:
     | '__root__'
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | '/termos'
     | '/torneio'
     | '/pagamento/retorno'
+    | '/api/gallery/$id'
     | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -145,6 +157,7 @@ export interface RootRouteChildren {
   TermosRoute: typeof TermosRoute
   TorneioRoute: typeof TorneioRoute
   PagamentoRetornoRoute: typeof PagamentoRetornoRoute
+  ApiGalleryIdRoute: typeof ApiGalleryIdRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
@@ -206,6 +219,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PagamentoRetornoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/gallery/$id': {
+      id: '/api/gallery/$id'
+      path: '/api/gallery/$id'
+      fullPath: '/api/gallery/$id'
+      preLoaderRoute: typeof ApiGalleryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/payments/webhook': {
       id: '/api/public/payments/webhook'
       path: '/api/public/payments/webhook'
@@ -225,6 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermosRoute: TermosRoute,
   TorneioRoute: TorneioRoute,
   PagamentoRetornoRoute: PagamentoRetornoRoute,
+  ApiGalleryIdRoute: ApiGalleryIdRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport

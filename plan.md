@@ -80,3 +80,14 @@ Integrar a nova versão enviada em `arena-leste-projeto.zip` ao site já operaci
 - `drizzle/migrations/0003_arena_units_and_hours.sql`: catálogo de quadras/grade já aplicado.
 - `drizzle/migrations/0008_cancelled_slot_offers.sql`: armazenamento aditivo de ofertas; requer aplicação no Neon antes de ativar a função.
 - `src/styles.css`, `vite.config.ts` e `vite.static.config.ts`: tokens, estilos e builds atuais dos serviços Render.
+
+
+## Extensão solicitada — galeria de fotos 3D
+
+- **Posição e aparência:** inserir uma seção escura de galeria entre a faixa do campeonato e as unidades, preservando o laranja `#DF4F07`, os títulos esportivos Barlow Condensed e o restante do visual já aprovado.
+- **Movimento:** adaptar a referência do vídeo/HTML anexado para uma esteira de fotos 3D controlada pela rolagem natural da página. O palco fica sticky por uma sequência longa; as fotos passam de uma perspectiva diagonal para a posição frontal, ampliam ao chegar ao foco e a última termina de frente antes de a rolagem normal prosseguir ao restante do site. Não interceptar/travar o scroll, não iniciar autoplay e não depender de WebGL.
+- **Mobile e acessibilidade:** reduzir a extensão da sequência e o raio 3D em celular; manter alvos e texto legíveis, lista acessível das fotos e uma grade estática para `prefers-reduced-motion`/fallback sem animação.
+- **Conteúdo real:** fotos enviadas pelo admin são o conteúdo da galeria; não apresentar posters promocionais ou imagens ilustrativas como se fossem fotos reais da Arena. Antes de haver quatro fotos publicadas, manter a seção sem esteira e orientar que ela será ativada após a inclusão das imagens.
+- **Armazenamento e leveza:** não há serviço de objetos configurado no Render; persistir fotos em uma tabela própria do Neon, como WebP binário após otimização no navegador (largura máxima de 1.600 px, até 600 KiB por imagem), mantendo metadados e entrega por rota de imagem com cache. Limitar a biblioteca a 50 registros e a apresentação simultânea a 12 fotos publicadas; os limites preservam a hospedagem e a transferência atuais.
+- **Administração:** acrescentar um módulo autenticado “Galeria de fotos” para enviar imagens, editar título/descrição alternativa, ordenar, publicar/ocultar e excluir com confirmação. Aplicar o limite de 12 fotos publicadas também no servidor, proteger uploads por sessão/admin e registrar alterações no log de auditoria.
+- **Estrutura principal:** `src/components/PhotoConveyorGallery.tsx` apresenta a galeria pública; `src/components/PhotoGalleryAdmin.tsx` gerencia a biblioteca; `src/routes/api.gallery.$id.ts` serve os binários com MIME seguro; `src/lib/arena.functions.ts` fornece listagem e operações autenticadas; migration aditiva `0009_photo_gallery.sql` adiciona tabela e índices. Render/Neon e as rotas existentes permanecem intactas.

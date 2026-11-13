@@ -94,3 +94,11 @@
 ## Dados obrigatórios na reserva
 
 - [x] **Exigir nome e sobrenome do responsável** — não permitir concluir uma reserva com apenas um nome; mostrar orientação clara no formulário e validar novamente no servidor para proteger chamadas diretas à API.
+
+
+## Galeria pública 3D e banco de fotos
+
+- [ ] **Exibir a esteira 3D na área escura da landing page** — após a faixa/campanha e antes das unidades, mostrar as fotos da Arena em um carrossel de aparência 3D, inspirado no HTML e no vídeo anexados. Ao rolar, a esteira passa continuamente em perspectiva; os cartões aumentam ao chegar de frente e a sequência termina com uma foto em destaque frontal. Só então a rolagem natural segue para as outras seções do site. Não capturar a rolagem do usuário nem deixar um loop infinito impedir a navegação.
+- [ ] **Adaptar o efeito para celular e acessibilidade** — usar o mesmo layout em tela pequena com cartões e percurso 3D ajustados ao viewport; respeitar movimento reduzido com galeria estática, conteúdo acessível por teclado/leitor de tela e nenhum recurso essencial dependente da animação. Se houver menos de quatro fotos publicadas, não simular uma galeria cheia; explicar no painel que a esteira é ativada depois que houver fotos suficientes.
+- [ ] **Gerenciar a biblioteca de fotos no admin** — incluir um módulo autenticado para enviar, editar título e texto alternativo, ordenar, publicar/ocultar e excluir fotos com confirmação. O usuário pediu que o administrador possa “tirar fotos, fazer upload de fotos e tudo mais” diretamente pelo painel.
+- [ ] **Persistir e entregar imagens com segurança e leveza** — otimizar os uploads no navegador para WebP de até 1.600 px e 600 KiB, validar novamente MIME/conteúdo/tamanho e autenticação no servidor, guardar metadados e bytes no Neon, limitar a biblioteca a 50 imagens e a esteira pública a 12 publicadas, servir somente imagens públicas autorizadas com cabeçalhos seguros/cache e registrar as alterações administrativas em auditoria. Não expor dados pessoais nem acrescentar serviço/segredo externo sem configuração.

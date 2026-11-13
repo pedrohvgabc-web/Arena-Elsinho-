@@ -6,6 +6,7 @@ import {
   ContactRound,
   Database,
   LayoutDashboard,
+  Images,
   LayoutGrid,
   Trophy,
   type LucideIcon,
@@ -20,6 +21,7 @@ export type AdminModuleId =
   | "tournament"
   | "contact"
   | "backup"
+  | "gallery"
   | "legacy";
 
 export const ADMIN_MODULES: Array<{
@@ -32,6 +34,7 @@ export const ADMIN_MODULES: Array<{
   { id: "reservations", label: "Reservas", icon: ClipboardList },
   { id: "hours", label: "Horários", icon: Clock3 },
   { id: "courts", label: "Unidades e quadras", icon: LayoutGrid },
+  { id: "gallery", label: "Galeria de fotos", icon: Images },
   { id: "tournament", label: "Torneio", icon: Trophy },
   { id: "contact", label: "Contato", icon: ContactRound },
   { id: "backup", label: "Dados e backup", icon: Database },

@@ -1051,17 +1051,8 @@ const COOKIE = "ae_admin";
 const SESSION_HOURS = 8;
 
 async function requireAdmin() {
-  const { getCookie } = await import("@tanstack/react-start/server");
-  const token = getCookie(COOKIE);
-  if (!token) throw new Error("UNAUTHORIZED");
-  const db = await database();
-  const rows = (await db`
-    SELECT id FROM public.admin_sessions
-    WHERE token_hash = ${await sha256(token)} AND expires_at > now()
-    LIMIT 1
-  `) as unknown as AdminSessionRow[];
-  if (!rows[0]) throw new Error("UNAUTHORIZED");
-  return rows[0].id;
+  const auth = await import("./admin-auth.server");
+  return auth.requireAdmin();
 }
 
 export const adminTournamentRegistrations = createServerFn({ method: "GET" }).handler(async () => {

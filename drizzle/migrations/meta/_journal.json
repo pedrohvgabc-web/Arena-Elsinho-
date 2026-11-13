@@ -43,6 +43,13 @@
       "when": 1794517876000,
       "tag": "0008_cancelled_slot_offers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794605748419,
+      "tag": "0009_photo_gallery",
+      "breakpoints": true
     }
   ]
 }
